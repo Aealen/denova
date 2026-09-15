@@ -9,6 +9,8 @@ test('uploads, previews, sends, and restores image attachments in Writing and Ga
   // image used to be rejected as >590K text tokens before reaching the model.
   const image = await sharp({ create: { width: 768, height: 768, channels: 3, background: '#165cbd' } })
     .png({ compressionLevel: 0 }).toBuffer()
+  const secondImage = await sharp({ create: { width: 768, height: 768, channels: 3, background: '#e3aa22' } })
+    .png({ compressionLevel: 0 }).toBuffer()
   expect(image.length).toBeGreaterThan(1_200_000)
   await createAndOpenBook(request, 'Attachment E2E Book')
   await createStartedStory(request, 'Attachment E2E Story')
@@ -23,6 +25,11 @@ test('uploads, previews, sends, and restores image attachments in Writing and Ga
   await expect(page.getByTestId('right').getByTestId('sent-message-attachments')).toHaveCount(1)
   await previewImage(page, 'right', 'writing-e2e.png')
 
+  await attachImage(page, 'right', 'writing-second.png', secondImage)
+  await composer.fill('Compare both images. E2E_WRITING_IMAGE_ATTACHMENT E2E_TWO_IMAGES')
+  await composer.press('Enter')
+  await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(2)
+
   composer = await openGame(page)
   await attachImage(page, 'story-stage', 'game-e2e.png', image)
   await expect(page.getByTestId('story-stage').getByRole('button', { name: '预览 game-e2e.png' })).toBeVisible()
@@ -32,22 +39,27 @@ test('uploads, previews, sends, and restores image attachments in Writing and Ga
   await expect(page.getByTestId('story-stage').getByTestId('sent-message-attachments')).toHaveCount(1)
   await previewImage(page, 'story-stage', 'game-e2e.png')
 
+  await attachImage(page, 'story-stage', 'game-second.png', secondImage)
+  await composer.fill('Compare both signals. E2E_GAME_IMAGE_ATTACHMENT E2E_TWO_IMAGES')
+  await composer.press('Enter')
+  await expect(page.getByText('图像中的蓝色信标亮起，旧车站的侧门随之打开。', { exact: true })).toHaveCount(2)
+
   await page.reload()
   composer = await openGame(page)
-  await expect(page.getByTestId('story-stage').getByTestId('sent-message-attachments')).toHaveCount(1)
+  await expect(page.getByTestId('story-stage').getByTestId('sent-message-attachments')).toHaveCount(2)
   await previewImage(page, 'story-stage', 'game-e2e.png')
 
   await composer.fill('Continue using the original image. E2E_GAME_IMAGE_ATTACHMENT')
   await composer.press('Enter')
-  await expect(page.getByText('图像中的蓝色信标亮起，旧车站的侧门随之打开。', { exact: true })).toHaveCount(2)
+  await expect(page.getByText('图像中的蓝色信标亮起，旧车站的侧门随之打开。', { exact: true })).toHaveCount(3)
 
   composer = await openWritingAgent(page)
-  await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(1)
-  await expect(page.getByTestId('right').getByTestId('sent-message-attachments')).toHaveCount(1)
+  await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(2)
+  await expect(page.getByTestId('right').getByTestId('sent-message-attachments')).toHaveCount(2)
   await previewImage(page, 'right', 'writing-e2e.png')
   await composer.fill('Continue using the original image. E2E_WRITING_IMAGE_ATTACHMENT')
   await composer.press('Enter')
-  await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(2)
+  await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(3)
 })
 
 async function openGame(page: Page) {
@@ -72,3 +84,27 @@ async function previewImage(page: Page, surface: 'right' | 'story-stage', name: 
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
 }
+
+
+test('shows a localized transport error in Writing and Game after reload', async ({ page, request }, testInfo) => {
+  await createAndOpenBook(request, 'Image limit E2E Book')
+  await createStartedStory(request, 'Image limit E2E Story')
+  await page.goto('/')
+  const error = '请求超过供应商的传输大小限制，请减少或缩小附件，或新建会话。'
+  for (const surface of ['writing', 'game']) {
+    if (surface === 'game') {
+      const settings = await request.patch('/api/settings', { data: { layer: 'user', changes: { theme: 'light' } } })
+      expect(settings.ok()).toBe(true)
+      await page.reload()
+    }
+    const composer = surface === 'writing' ? await openWritingAgent(page) : await openGame(page)
+    await composer.fill('E2E_IMAGE_TRANSPORT_LIMIT')
+    await composer.press('Enter')
+    await expect(page.getByText(error, { exact: false }).filter({ visible: true }).first()).toBeVisible()
+    await page.reload()
+    if (surface === 'writing') await openWritingAgent(page)
+    else await openGame(page)
+    await expect(page.getByText(error, { exact: false }).filter({ visible: true }).first()).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath(`${surface}-transport-error.png`) })
+  }
+})

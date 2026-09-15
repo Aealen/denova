@@ -14,6 +14,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- Agent 可通过 `read` 查看本地图片与生成图；写作和游戏保留读取时的图片副本，重启后仍可继续分析。
+- Agents can inspect local and generated images with `read`; Writing and Game retain captured image copies for continued analysis after restart.
+
 - 写作与游戏支持暂停整个 Agent 任务，重启后继续原任务，保留已接收输入、子任务及游戏已接纳草稿；中断后结果不明的操作可核实或直接取消任务。
 - Pause an entire Writing or Game Agent task and continue it after restart, preserving accepted input, child tasks, and accepted Game drafts; verify uncertain interrupted operations or cancel the task directly.
 
@@ -22,8 +25,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
-- 修复写作与游戏将图片编码体积误算为文本 token、导致正常参考图被拒绝的问题；图片上下文预算与上传传输体积分别校验。
-- Fix Writing and Game rejecting valid reference images by counting encoded image bytes as text tokens; visual context and encoded payload limits are checked separately.
+- 修复写作与游戏将图片编码体积误算为文本 token、导致正常参考图被拒绝的问题；图片上下文预算与实际发送大小分别校验，连续发送图片不再误触发通用 4 MB 上限，必要时仅缩小发送副本。
+- Fix Writing and Game rejecting valid reference images by counting encoded image bytes as text tokens; visual context and actual payload limits are checked separately, so consecutive images no longer hit the generic 4 MB cap; resize sending copies when needed.
 
 - 写作与游戏的长任务可在同一个请求内反复压缩已完成步骤，保留当前要求与最近工具结果；超大工具输出可回读完整文件，重启后继续使用摘要。修正压缩后的 token 校准，避免多余压缩与误报容量不足。
 - Writing and Game long tasks can compact completed steps repeatedly within one request while preserving current instructions and recent tool results; complete oversized output remains readable from artifacts, and checkpoints survive restart. Correct post-compaction token calibration to avoid redundant summaries and false capacity failures.

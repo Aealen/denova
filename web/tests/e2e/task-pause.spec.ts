@@ -27,7 +27,7 @@ for (const product of ['writing', 'game'] as const) {
       const readActive = async () => (await request.get(activeURL)).json()
       const running = await readActive()
       expect(running.active_operation_id).toBeTruthy()
-      await page.getByRole('button', { name: '暂停任务', exact: true }).click()
+      await page.locator('[data-action="stop"]').filter({ visible: true }).click()
       await expect(page.getByRole('button', { name: '继续任务', exact: true })).toBeVisible()
       await expect.poll(async () => (await readActive()).phase).toBe('suspended')
       // The fake provider retains disconnected requests until released. Releasing

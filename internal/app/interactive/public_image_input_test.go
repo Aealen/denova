@@ -50,7 +50,7 @@ func (m *imageProductModel) Generate(_ context.Context, messages []*agent.Messag
 			images++
 		}
 	}
-	if images != 1 || size.Tokens >= 10_000 || size.Bytes <= 2<<20 {
+	if images != min(m.calls+1, 2) || size.Tokens >= 20_000 {
 		return nil, fmt.Errorf("unexpected image input: count=%d size=%+v", images, size)
 	}
 	m.calls++
@@ -116,7 +116,7 @@ func TestProductsAcceptNativeImageAfterColdReopen(t *testing.T) {
 			}
 			cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 400_000}
 			model := &imageProductModel{config: providers.ModelConfig{Provider: providers.ProviderAnthropic, Model: "claude-sonnet-4-6"}, image: encoded}
-			for turn := range 2 {
+			for turn := range 3 {
 				journals, err := canonicalstore.New(dataDir, registry)
 				if err != nil {
 					t.Fatal(err)
@@ -131,7 +131,7 @@ func TestProductsAcceptNativeImageAfterColdReopen(t *testing.T) {
 					t.Fatal(err)
 				}
 				input := "Inspect the reference image."
-				if turn == 1 {
+				if turn == 2 {
 					input = "Continue using the same reference."
 					files = nil
 				}
@@ -153,7 +153,7 @@ func TestProductsAcceptNativeImageAfterColdReopen(t *testing.T) {
 				if err := runtime.Close(ctx); err != nil {
 					t.Fatal(err)
 				}
-				if turn == 0 {
+				if turn < 2 {
 					if err := stories.Close(); err != nil {
 						t.Fatal(err)
 					}
@@ -171,7 +171,7 @@ func TestProductsAcceptNativeImageAfterColdReopen(t *testing.T) {
 					}
 				}
 			}
-			if model.calls != 2 {
+			if model.calls != 3 {
 				t.Fatalf("unexpected extra model calls or compaction: %d", model.calls)
 			}
 		})

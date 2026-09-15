@@ -204,7 +204,7 @@ func (session *Session) replay(ctx context.Context) error {
 			}
 			session.addRecentLocked(RunSummary{ID: turn.RunID, CommandID: turn.CommandID, Status: turn.Status, Reason: turn.Reason, Output: turn.Output})
 			if run := session.runs[turn.RunID]; run != nil {
-				run.settled, run.result = true, Result{Status: turn.Status, Reason: turn.Reason}
+				run.settled, run.result, run.finishedAt = true, Result{Status: turn.Status, Reason: turn.Reason}, turn.At
 				if turn.Status != ResultCompleted && turn.Status != ResultAborted {
 					run.err = &RunError{Result: run.result}
 				}

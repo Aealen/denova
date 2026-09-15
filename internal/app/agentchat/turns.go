@@ -18,6 +18,7 @@ import (
 	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
+	agent "github.com/alfredxw/denova/agent"
 )
 
 // StartTask starts one project-scoped turn without switching the foreground
@@ -37,8 +38,7 @@ func (service *Service) StartTask(ctx context.Context, binding Binding, request 
 }
 
 // AcceptedTurn is one project-Agent command that crossed durable admission.
-// Its caller owns exactly one of Start or Wait. Start is used by interactive
-// AgentChat; Automation already owns a Task worker and calls Wait from it.
+// Start uses the common Project Agent worker for every caller, including triggers.
 type AcceptedTurn struct {
 	service      *Service
 	active       *run
@@ -47,6 +47,7 @@ type AcceptedTurn struct {
 	runtime      conversationapp.Runtime
 	conversation *agentconversation.SessionConversation
 	replayed     bool
+	receipt      agentrun.CommandReceipt
 
 	mutationMu        sync.Mutex
 	verifiedMutations []agenttool.Mutation
@@ -61,8 +62,11 @@ func (turn *AcceptedTurn) Task() *apptask.Task {
 }
 
 func (turn *AcceptedTurn) Receipt() agentrun.CommandReceipt {
-	if turn == nil || turn.accepted == nil {
+	if turn == nil {
 		return agentrun.CommandReceipt{}
+	}
+	if turn.accepted == nil {
+		return turn.receipt
 	}
 	return turn.accepted.Receipt()
 }
@@ -156,35 +160,18 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		if input.Task != nil && input.Task != replay {
 			return nil, fmt.Errorf("%w: command_id=%q", apptask.ErrCommandConflict, request.CommandID)
 		}
-		return &AcceptedTurn{service: service, task: replay, replayed: true}, nil
-	}
-	busyPolicy := input.Policy.BusyPolicy
-	if busyPolicy == "" {
-		busyPolicy = TurnBusyReject
-	}
-	if busyPolicy != TurnBusyReject && busyPolicy != TurnBusyWait {
-		return nil, fmt.Errorf("unsupported AgentChat busy policy %q", input.Policy.BusyPolicy)
-	}
-	for {
-		active := service.activeRun(binding)
-		if active == nil || active.task == nil || active.task.Finished() {
-			break
+		_, runtime := service.host.BaseRuntime()
+		view, found, err := runtime.CommandProjection(ctx, runtimeOptions(binding, ""), request.CommandID)
+		if err != nil {
+			return nil, err
 		}
-		switch busyPolicy {
-		case TurnBusyReject:
-			return nil, appagentruntime.ErrOperationActive
-		case TurnBusyWait:
-			slog.InfoContext(ctx, fmt.Sprintf(
-				"[app/agentchat] turn waiting for conversation owner project_id=%s session_id=%s task_id=%s",
-				binding.ProjectID, binding.SessionID, active.task.ID(),
-			))
-			select {
-			case <-active.task.Done():
-				continue
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
+		if !found {
+			return nil, fmt.Errorf("accepted AgentChat command is missing: %s", request.CommandID)
 		}
+		return &AcceptedTurn{service: service, task: replay, replayed: true, receipt: view.Receipt}, nil
+	}
+	if active := service.activeRun(binding); active != nil && active.task != nil && !active.task.Finished() {
+		return nil, appagentruntime.ErrOperationActive
 	}
 
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
@@ -282,6 +269,9 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		service.releaseActiveRun(active)
 		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, fmt.Errorf("%w: command_id=%q", apptask.ErrCommandConflict, request.CommandID)
+		}
+		if errors.Is(err, agent.ErrSessionBusy) {
+			return nil, appagentruntime.ErrOperationActive
 		}
 		return nil, err
 	}

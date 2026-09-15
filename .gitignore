@@ -27,6 +27,7 @@ docs/tests/*
 !docs/continual-learning-user-state-design.md
 !docs/dynamic-tool-orchestration-design.md
 !docs/agent-package-api-design.md
+!docs/automation-project-agent.md
 !docs/agent-package-migration-parity-audit.md
 !docs/agent-prompt-architecture-audit.md
 !docs/agent-prompt-context-architecture-benchmark.md

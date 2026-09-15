@@ -1718,6 +1718,18 @@ describe('useAgentChat', () => {
     expect(result.current.abortPending).toBe(true)
   })
 
+  it('shares a pending stream attachment across repeated inspections', async () => {
+    const attachment = deferred<void>()
+    chatMock.resumeStream.mockReturnValue(attachment.promise)
+    vi.mocked(getActiveChatTask).mockResolvedValue({ active: true, task_id: 'same-task', active_operation_id: 'same-operation', phase: 'running' })
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => result.current.resumeActiveChat())
+    await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(1))
+    await act(async () => result.current.resumeActiveChat())
+    expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
+    await act(async () => attachment.resolve())
+  })
+
   it('immediately reprojects a second paused recovery after AI SDK resolves the failed observation', async () => {
     const firstResume = deferred<void>()
     const nextAction = {
