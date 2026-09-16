@@ -113,6 +113,22 @@ describe('useAgentChat', () => {
     })
   })
 
+  it('restores every pending external question from the active projection', async () => {
+    const questions = ['tone', 'length'].map((id) => ({
+      schema: 'ask.pending.v1', id, tool_call_id: `original-${id}`, agent_kind: 'ide', status: 'pending' as const,
+      questions: [{ id, question: `Choose ${id}`, options: [] }],
+    }))
+    vi.mocked(getActiveChatTask).mockResolvedValue({ active: false, pending_asks: questions })
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => result.current.resumeActiveChat())
+    const restored = chatMock.setMessages.mock.calls.reduce<Array<{ parts?: Array<{ type?: string; data?: unknown }> }>>(
+      (messages, [update]) => typeof update === 'function' ? update(messages) : update, [],
+    )
+    const pending = restored.flatMap((message) => message.parts ?? []).filter((part) => part.type === 'data-agent-ask')
+    expect(pending.map((part) => part.data)).toEqual(questions)
+    expect(chatMock.resumeStream).not.toHaveBeenCalled()
+  })
+
   it('keeps the confirmed session selected and blocks sends while a switch is pending', async () => {
     writingAgentChatClient.fixedSessionId = ''
     chatMock.status = 'streaming'

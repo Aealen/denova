@@ -46,10 +46,12 @@ type ConversationConfigBinding struct {
 // transport layer depends on this type instead of reaching through app into
 // the Agent implementation package.
 type ConversationConfigPatch struct {
-	CustomAgentID *string                   `json:"custom_agent_id,omitempty"`
-	ProfileID     *string                   `json:"profile_id,omitempty"`
-	ThinkingLevel *string                   `json:"thinking_level,omitempty"`
-	ApprovalMode  *config.AgentApprovalMode `json:"approval_mode,omitempty"`
+	CustomAgentID *string                      `json:"custom_agent_id,omitempty"`
+	ProfileID     *string                      `json:"profile_id,omitempty"`
+	ThinkingLevel *string                      `json:"thinking_level,omitempty"`
+	ApprovalMode  *config.AgentApprovalMode    `json:"approval_mode,omitempty"`
+	Runtime       *config.RuntimeSelection     `json:"runtime,omitempty"`
+	Codex         *config.CodexRuntimeSettings `json:"codex,omitempty"`
 }
 
 type ConversationGoalMutation struct {
@@ -113,6 +115,19 @@ func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationCo
 		if err != nil {
 			return agent.GoalState{}, err
 		}
+		store, _, sessionID, err := a.foregroundConversationRuntime(binding.SessionID)
+		if err != nil {
+			return agent.GoalState{}, err
+		}
+		sess, err := store.Get(sessionID)
+		if err != nil {
+			return agent.GoalState{}, err
+		}
+		release, err := a.AgentEngines().AdmitExecution(ctx, sess, nil)
+		if err != nil {
+			return agent.GoalState{}, err
+		}
+		defer release()
 		goalMutation := agent.GoalMutation{ExpectedRevision: mutation.ExpectedRevision}
 		switch action {
 		case "set":
@@ -188,8 +203,12 @@ func (a *App) writingGoalRuntime(requestedSessionID string) (*agentexecution.Run
 	}
 	// The product Session remains the canonical writing-history owner, but Goal
 	// state is held only by the public Agent Session.
-	if _, err := store.Get(sessionID); err != nil {
+	sess, err := store.Get(sessionID)
+	if err != nil {
 		return nil, agentrun.Options{}, config.Config{}, err
+	}
+	if selection, ok := sess.RuntimeConfig(); ok && selection.Engine().Kind != config.RuntimeNative {
+		return nil, agentrun.Options{}, config.Config{}, conversationconfig.ErrRuntimeCapabilityUnsupported
 	}
 	a.mu.RLock()
 	executionRuntime := a.executionRuntime
@@ -219,6 +238,8 @@ func (patch *ConversationConfigPatch) UnmarshalJSON(data []byte) error {
 		ProfileID:     parsed.ProfileID,
 		ThinkingLevel: parsed.ThinkingLevel,
 		ApprovalMode:  parsed.ApprovalMode,
+		Runtime:       parsed.Runtime,
+		Codex:         parsed.Codex,
 	}
 	return nil
 }
@@ -254,7 +275,7 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 }
 
 func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch ConversationConfigPatch, baseRevision uint64) (conversationconfig.Snapshot, error) {
-	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil {
+	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil && patch.Runtime == nil && patch.Codex == nil {
 		return conversationconfig.Snapshot{}, errors.New("conversation config changes are empty")
 	}
 	if patch.ProfileID != nil || patch.ThinkingLevel != nil {
@@ -266,6 +287,8 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 		ProfileID:     patch.ProfileID,
 		ThinkingLevel: patch.ThinkingLevel,
 		ApprovalMode:  patch.ApprovalMode,
+		Runtime:       patch.Runtime,
+		Codex:         patch.Codex,
 	}
 	var snapshot conversationconfig.Snapshot
 	var err error
@@ -274,7 +297,7 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
 			return conversationconfig.Snapshot{}, err
 		}
-		snapshot, err = a.patchWritingConversationConfig(binding, change, baseRevision)
+		snapshot, err = a.patchWritingConversationConfig(ctx, binding, change, baseRevision)
 	case ConversationModeAgentChat:
 		snapshot, err = a.AgentChat().PatchConversationConfig(ctx, agentchatapp.Binding{
 			ProjectID: binding.ProjectID, SessionID: binding.SessionID,
@@ -325,7 +348,7 @@ func (a *App) writingConversationConfig(binding ConversationConfigBinding) (conv
 	return agentconversation.EnsureSession(sess, &runtimeCfg, config.AgentKindIDE)
 }
 
-func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
+func (a *App) patchWritingConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
 	service := a.chat()
 	service.admission.Lock()
 	defer service.admission.Unlock()
@@ -344,6 +367,16 @@ func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, 
 	next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
+	}
+	if patch.Runtime != nil {
+		a.mu.RLock()
+		native, task := a.executionRuntime, activeWritingTaskLocked(a)
+		a.mu.RUnlock()
+		if task != nil && !task.Finished() {
+			return conversationconfig.Snapshot{}, ErrAgentOperationActive
+		}
+		options := agentrun.Options{AgentKind: config.AgentKindIDE, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStoreDir, Workspace: runtimeCfg.Workspace, SessionID: sessionID, Mode: "ide"}
+		return a.AgentEngines().ApplyEngineSelection(ctx, native, sess, options, next, baseRevision)
 	}
 	return sess.SetRuntimeConfig(next, baseRevision)
 }

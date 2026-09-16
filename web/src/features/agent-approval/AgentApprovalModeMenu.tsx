@@ -42,7 +42,7 @@ export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', 
         setMode: async (mode: AgentApprovalMode) => conversationConfig.patch({ approval_mode: mode }),
       }
     : defaultApproval
-  if (!approval.initialized) return null
+  if (!approval.initialized || (conversationConfig?.snapshot?.runtime && conversationConfig.snapshot.runtime.kind !== 'native')) return null
 
   const CurrentIcon = modePresentation[approval.mode].icon
   const changeMode = (next: AgentApprovalMode) => {

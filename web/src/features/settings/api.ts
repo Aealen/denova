@@ -123,10 +123,19 @@ function sameQueryKey(left: readonly unknown[], right: readonly unknown[]): bool
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
-/** Builds the minimal RFC 7386 object needed to transform baseline into draft. */
+/** Builds a settings patch, retaining complete atomic engine model selections. */
 export function createSettingsMergePatch(baseline: Settings, draft: Settings): SettingsPatch {
   const patch = createMergePatchValue(baseline, draft)
-  return patch === unchanged || !isPlainObject(patch) ? {} : patch as SettingsPatch
+  if (patch === unchanged || !isPlainObject(patch)) return {}
+  const settingsPatch = patch as SettingsPatch
+  // The API replaces each Codex model/effort branch as one selection. A recursive
+  // diff would omit the unchanged model during an effort edit (or lose effort).
+  for (const role of ['ide', 'general'] as const) {
+    const runtimePatch = settingsPatch.agent_runtimes?.[role]
+    const codex = draft.agent_runtimes?.[role]?.codex
+    if (runtimePatch?.codex && codex) runtimePatch.codex = { ...codex }
+  }
+  return settingsPatch
 }
 
 const unchanged = Symbol('unchanged')

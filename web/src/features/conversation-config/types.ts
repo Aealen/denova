@@ -17,6 +17,9 @@ export interface ConversationConfigBinding {
 
 /** Fully resolved runtime selection persisted with one conversation. */
 export interface ConversationConfigSnapshot {
+  runtime?: import('@/features/agent-runtime/types').RuntimeSelection
+  runtime_capabilities?: import('@/features/agent-runtime/types').EngineCapabilities
+  runtime_status?: import('@/features/agent-runtime/types').EngineDescriptor['status']
   agent_kind: string
   custom_agent_id?: string
   profile_id: string
@@ -25,7 +28,15 @@ export interface ConversationConfigSnapshot {
   revision: number
 }
 
+/** Missing snapshots preserve the original Native UI while it initializes. */
+export function supportsRuntimeOperation(snapshot: ConversationConfigSnapshot | null, capability: keyof import('@/features/agent-runtime/types').EngineCapabilities): boolean {
+  return snapshot?.runtime_capabilities?.[capability] ?? (!snapshot?.runtime || snapshot.runtime.kind === 'native')
+}
+
 export interface ConversationConfigChanges {
+  runtime?: import('@/features/agent-runtime/types').RuntimeSelection
+  /** Complete model selection for the current Codex engine; never switches engines. */
+  codex?: import('@/features/agent-runtime/types').CodexRuntimeSettings
   custom_agent_id?: string
   profile_id?: string
   thinking_level?: ThinkingLevel
@@ -33,6 +44,7 @@ export interface ConversationConfigChanges {
 }
 
 export interface ConversationConfigController {
+  binding?: ConversationConfigBinding
   snapshot: ConversationConfigSnapshot | null
   initialized: boolean
   loading: boolean

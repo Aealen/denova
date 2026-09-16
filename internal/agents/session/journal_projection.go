@@ -15,11 +15,12 @@ import (
 
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
+	externaljournal "denova/internal/agents/external/journal"
 	"denova/internal/agents/sessionjournal"
 )
 
 const (
-	sessionProjectionVersion      = 23
+	sessionProjectionVersion      = 26
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -107,6 +108,7 @@ type sessionJournalProjection struct {
 	AssistantRuns              []assistantRunCheckpoint                       `json:"active_assistant_runs,omitempty"`
 	AssistantTargets           []assistantTargetCheckpoint                    `json:"active_assistant_targets,omitempty"`
 	AgentSessions              sessionjournal.Projection                      `json:"agent_sessions,omitempty"`
+	External                   externaljournal.Projection                     `json:"external_runtime,omitempty"`
 	ReleasedContextCompactions map[string]releasedContextCompactionProjection `json:"released_context_compactions,omitempty"`
 
 	expectedID         string
@@ -163,6 +165,9 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 	if err := restored.AgentSessions.Normalize(); err != nil {
 		return err
 	}
+	if err := restored.External.Validate(); err != nil {
+		return err
+	}
 	if restored.ReleasedContextCompactions == nil {
 		restored.ReleasedContextCompactions = make(map[string]releasedContextCompactionProjection)
 	}
@@ -195,6 +200,28 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 	if handled, err := projection.AgentSessions.Apply(record.Payload); handled || err != nil {
 		return err
 	}
+	if handled, err := projection.External.Apply(record); handled || err != nil {
+		if err == nil {
+			var external externaljournal.Record
+			if err := json.Unmarshal(record.Payload, &external); err != nil {
+				return err
+			}
+			if external.Kind == externaljournal.ToolStarted {
+				projection.rememberHistoryRow(record.Location.Cursor, false)
+			}
+			if external.Kind == externaljournal.OperationClosed {
+				event, err := ExternalUsageDisplay(external)
+				if err != nil {
+					return err
+				}
+				if event != nil {
+					projection.rememberHistoryRow(record.Location.Cursor, false)
+				}
+			}
+			projection.advanceUpdatedAt(external.CreatedAt)
+		}
+		return err
+	}
 	var typed struct {
 		Type string `json:"type"`
 	}
@@ -220,6 +247,7 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.rememberHistoryRow(record.Location.Cursor, true)
 		projection.ClearAfter = projection.MessageCount
 		projection.ClearCursor = record.Location.Cursor
+		projection.External.Reset()
 		clear(projection.ReleasedContextCompactions)
 		projection.advanceRevision(marker.ContextRevision)
 		projection.advanceUpdatedAt(marker.CreatedAt)
@@ -236,7 +264,7 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.rememberHistoryRow(record.Location.Cursor, false)
 		projection.advanceUpdatedAt(display.CreatedAt)
 		return nil
-	case historyTypeSessionPatch:
+	case historyTypeSessionPatch, historyTypeRuntimePatch:
 		var patch sessionPatchRecord
 		if err := json.Unmarshal(record.Payload, &patch); err != nil {
 			return err
