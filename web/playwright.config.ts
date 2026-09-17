@@ -39,6 +39,9 @@ export default defineConfig({
       // Real journeys include route hydration, multiple model/tool rounds, and
       // reloads. Budget the whole journey separately from assertion deadlines.
       timeout: 120_000,
+      // Full-suite CI includes tool rounds and conversation hydration with a
+      // populated workspace. Allow those asynchronous results time to render.
+      expect: { timeout: 30_000 },
       use: { ...devices['Desktop Chrome'] },
     },
   ],

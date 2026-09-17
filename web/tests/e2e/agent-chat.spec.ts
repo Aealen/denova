@@ -37,14 +37,13 @@ test('runs General Agent tools in ordinary directories without crossing Project 
   await openAgentChatWorkbench(page)
   let composer = await openAgentChatSession(page, alpha.id, alphaSession.title)
   await submitAgentChatMessage(page, composer, 'Write the deterministic Project proof. E2E_GENERAL_PROJECT_ALPHA_WRITE')
-  // Completion includes tool execution and conversation hydration under CI load.
-  await expect(page.getByText('General Project write completed: alpha-project-only.', { exact: true }).filter({ visible: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('General Project write completed: alpha-project-only.', { exact: true }).filter({ visible: true })).toBeVisible()
   await expect.poll(() => readFile(path.join(alphaPath, 'e2e-project-proof.txt'), 'utf8')).toBe('alpha-project-only')
   await expect.poll(() => fileExists(path.join(betaPath, 'e2e-project-proof.txt'))).toBe(false)
 
   composer = await openAgentChatSession(page, beta.id, betaSession.title)
   await submitAgentChatMessage(page, composer, 'Write the deterministic Project proof. E2E_GENERAL_PROJECT_BETA_WRITE')
-  await expect(page.getByText('General Project write completed: beta-project-only.', { exact: true }).filter({ visible: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('General Project write completed: beta-project-only.', { exact: true }).filter({ visible: true })).toBeVisible()
   await expect.poll(() => readFile(path.join(betaPath, 'e2e-project-proof.txt'), 'utf8')).toBe('beta-project-only')
   await expect(readFile(path.join(alphaPath, 'e2e-project-proof.txt'), 'utf8')).resolves.toBe('alpha-project-only')
 })
