@@ -37,6 +37,7 @@ export interface ConversationConfigChanges {
   runtime?: import('@/features/agent-runtime/types').RuntimeSelection
   /** Complete model selection for the current Codex engine; never switches engines. */
   codex?: import('@/features/agent-runtime/types').CodexRuntimeSettings
+  claude?: import('@/features/agent-runtime/types').ClaudeRuntimeSettings
   custom_agent_id?: string
   profile_id?: string
   thinking_level?: ThinkingLevel

@@ -39,7 +39,7 @@ func TestEngineSwitchChecksWritingOwnerAndRejectsPreviouslyPreparedNativeExecuti
 	selection.Runtime = &config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "runtime-model"}}
 	fromAgents := options
 	fromAgents.Mode = "agent_chat"
-	if _, err := engines.ApplyEngineSelection(t.Context(), native, sess, fromAgents, selection, 1); !errors.Is(err, ErrOperationActive) {
+	if _, err := engines.ApplyEngineSelection(t.Context(), native, sess, fromAgents, selection, 1, config.Config{}); !errors.Is(err, ErrOperationActive) {
 		t.Fatalf("AgentChat bypassed the Writing goal: %v", err)
 	}
 	if connection.probes != 0 {
@@ -48,7 +48,7 @@ func TestEngineSwitchChecksWritingOwnerAndRejectsPreviouslyPreparedNativeExecuti
 	if _, err := native.UpdateGoal(t.Context(), options, agent.GoalMutation{Kind: agent.GoalClear, ExpectedRevision: goal.Revision}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engines.ApplyEngineSelection(t.Context(), native, sess, fromAgents, selection, 1); err != nil {
+	if _, err := engines.ApplyEngineSelection(t.Context(), native, sess, fromAgents, selection, 1, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
 	if release, err := engines.AdmitExecution(t.Context(), sess, nil); !errors.Is(err, conversationconfig.ErrRevisionConflict) {

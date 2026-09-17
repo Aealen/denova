@@ -8,35 +8,38 @@ test.afterEach(async ({ request }) => {
   expect(response.ok(), await response.text()).toBe(true)
 })
 
+for (const engine of ['codex', 'claude'] as const) {
 for (const language of ['zh-CN', 'en-US']) {
-  test(`CLI sign-in guidance and connection recheck work in ${language}`, async ({ page, request }) => {
-    await createAndOpenBook(request, `CLI credentials ${language}`)
+  test(`${engine} CLI sign-in guidance and connection recheck work in ${language}`, async ({ page, request }) => {
+    await createAndOpenBook(request, `${engine} CLI credentials ${language}`)
     const initial = await (await request.get('/api/settings')).json()
     const saved = await request.patch('/api/settings', { data: {
       layer: 'user', base_revision: initial.revisions.user,
-      changes: { language, agent_runtimes: { ide: { selected: 'codex' } } },
+      changes: { language, agent_runtimes: { ide: { selected: engine } } },
     } })
     expect(saved.ok(), await saved.text()).toBe(true)
     let checked = false
     await page.route('**/api/agent-runtimes', async route => {
       const response = await route.fetch()
       const body = await response.json()
-      await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === 'codex'
+      await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === engine
         ? { ...item, status: 'auth_required' } : item) } })
     })
-    await page.route('**/api/agent-runtimes/codex/check', async route => {
+    await page.route(`**/api/agent-runtimes/${engine}/check`, async route => {
       expect(route.request().method()).toBe('POST')
       checked = true
-      await route.fulfill({ json: { id: 'codex', name_key: 'agentRuntime.codex', status: 'ready' } })
+      await route.fulfill({ json: { id: engine, name_key: `agentRuntime.${engine}`, status: 'ready' } })
     })
-    await page.route('**/api/agent-runtimes/codex/models', async route => {
+    await page.route(`**/api/agent-runtimes/${engine}/models`, async route => {
       expect(checked).toBe(true)
       await route.fulfill({ json: { items: [{ id: 'local-model', display_name: 'Local model', efforts: ['high'] }] } })
     })
     await page.goto('/')
     await page.getByRole('button', { name: 'Agents', exact: true }).click()
     const runtime = page.locator('[data-agent-configuration-section="runtime"]')
-    const hint = language === 'zh-CN'
+    const hint = engine === 'claude'
+      ? (language === 'zh-CN' ? '请在运行 Denova 的电脑上执行 claude auth login，然后重新检查连接。' : 'Run claude auth login on the computer running Denova, then check the connection again.')
+      : language === 'zh-CN'
       ? '请在运行 Denova 的电脑上打开终端，执行 codex login，然后重新检查连接。'
       : 'Run codex login in a terminal on the computer running Denova, then check the connection again.'
     const model = runtime.getByRole('combobox', { name: language === 'zh-CN' ? '引擎模型' : 'Engine model', exact: true })
@@ -50,9 +53,11 @@ for (const language of ['zh-CN', 'en-US']) {
     await expect(model).toBeEnabled()
     await model.click()
     await page.getByRole('option', { name: 'Local model', exact: true }).click()
-    await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.agent_runtimes.ide.codex)
+    await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.agent_runtimes.ide[engine])
       .toEqual({ model: 'local-model' })
   })
+}
+
 }
 
 for (const theme of ['dark', 'light']) {
@@ -62,7 +67,7 @@ for (const theme of ['dark', 'light']) {
     const initial = await (await request.get('/api/settings')).json()
     const seeded = await request.patch('/api/settings', { data: {
       layer: 'user', base_revision: initial.revisions.user,
-      changes: { theme, agent_runtimes: { ide: { selected: 'native', codex: { model: 'engine-model', effort: 'high' } } },
+      changes: { theme, agent_runtimes: { ide: { selected: 'native', codex: { model: 'engine-model', effort: 'high' }, claude: { model: 'sonnet', effort: 'medium' } } },
         agent_context: { ide: { compaction_threshold: 0.73 } } },
     } })
     expect(seeded.ok(), await seeded.text()).toBe(true)
@@ -129,6 +134,12 @@ for (const theme of ['dark', 'light']) {
     await expect(engine).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: test.info().outputPath(`runtime-${theme}-narrow.png`), animations: 'disabled' })
+    await engine.click()
+    await page.getByRole('option', { name: 'Claude Code', exact: true }).click()
+    await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.agent_runtimes.ide.selected).toBe('claude')
+    const claudeSaved = await (await request.get('/api/settings')).json()
+    expect(claudeSaved.user.agent_runtimes.ide.claude).toEqual({ model: 'sonnet', effort: 'medium' })
+    expect(claudeSaved.user.agent_runtimes.ide.codex).toEqual({ model: 'engine-model', effort: 'high' })
     await engine.click()
     await page.getByRole('option', { name: 'Native', exact: true }).click()
     await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.agent_runtimes?.ide?.selected).toBe('native')

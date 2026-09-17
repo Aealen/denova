@@ -13,6 +13,7 @@ type RuntimeID string
 const (
 	RuntimeNative RuntimeID = "native"
 	RuntimeCodex  RuntimeID = "codex"
+	RuntimeClaude RuntimeID = "claude"
 )
 
 var ErrInvalidAgentRuntime = errors.New("invalid Agent runtime configuration")
@@ -20,15 +21,30 @@ var ErrInvalidAgentRuntime = errors.New("invalid Agent runtime configuration")
 // CodexRuntimeSettings is one complete model selection. Model-specific effort
 // availability is checked by the internal runtime model catalog at execution.
 type CodexRuntimeSettings struct {
-	Model  string `toml:"model" json:"model"`
-	Effort string `toml:"effort,omitempty" json:"effort,omitempty"`
+	// ProfileID selects a Denova API model instead of a CLI-owned Model.
+	ProfileID string `toml:"profile_id,omitempty" json:"profile_id,omitempty"`
+	Model     string `toml:"model,omitempty" json:"model,omitempty"`
+	Effort    string `toml:"effort,omitempty" json:"effort,omitempty"`
+}
+
+// ClaudeRuntimeSettings stores CLI model aliases and its own effort vocabulary.
+// Empty effort delegates to the installed runtime default.
+type ClaudeRuntimeSettings struct {
+	ProfileID string `toml:"profile_id,omitempty" json:"profile_id,omitempty"`
+	Model     string `toml:"model,omitempty" json:"model,omitempty"`
+	Effort    string `toml:"effort,omitempty" json:"effort,omitempty"`
+}
+
+func (settings ClaudeRuntimeSettings) validate() error {
+	return validateRuntimeModel(settings.Model, settings.ProfileID, settings.Effort)
 }
 
 // RuntimePreferences retains inactive engine settings across selection changes.
 // Native settings stay in their existing fields and must not be duplicated here.
 type RuntimePreferences struct {
-	Selected RuntimeID             `toml:"selected,omitempty" json:"selected,omitempty"`
-	Codex    *CodexRuntimeSettings `toml:"codex,omitempty" json:"codex,omitempty"`
+	Selected RuntimeID              `toml:"selected,omitempty" json:"selected,omitempty"`
+	Codex    *CodexRuntimeSettings  `toml:"codex,omitempty" json:"codex,omitempty"`
+	Claude   *ClaudeRuntimeSettings `toml:"claude,omitempty" json:"claude,omitempty"`
 }
 
 // AgentRuntimeSettings deliberately has no default applying to game, image, or
@@ -41,46 +57,86 @@ type AgentRuntimeSettings struct {
 // RuntimeSelection is the resolved, immutable engine branch of a conversation.
 // An absent selection in a released conversation always means Native.
 type RuntimeSelection struct {
-	Kind  RuntimeID             `json:"kind"`
-	Codex *CodexRuntimeSettings `json:"codex,omitempty"`
+	Kind   RuntimeID              `json:"kind"`
+	Codex  *CodexRuntimeSettings  `json:"codex,omitempty"`
+	Claude *ClaudeRuntimeSettings `json:"claude,omitempty"`
 }
 
 func (preferences RuntimePreferences) Validate() error {
 	switch preferences.Selected {
-	case "", RuntimeNative, RuntimeCodex:
+	case "", RuntimeNative, RuntimeCodex, RuntimeClaude:
 	default:
 		return fmt.Errorf("%w: unknown selected runtime %q", ErrInvalidAgentRuntime, preferences.Selected)
 	}
 	if preferences.Codex != nil {
-		return preferences.Codex.validate()
+		if err := preferences.Codex.validate(); err != nil {
+			return err
+		}
+	}
+	if preferences.Claude != nil {
+		return preferences.Claude.validate()
 	}
 	return nil
 }
 
 func (settings CodexRuntimeSettings) validate() error {
-	if strings.TrimSpace(settings.Model) == "" || settings.Model != strings.TrimSpace(settings.Model) {
-		return fmt.Errorf("%w: Codex model must be a non-empty identifier without surrounding whitespace", ErrInvalidAgentRuntime)
+	return validateRuntimeModel(settings.Model, settings.ProfileID, settings.Effort)
+}
+
+func validateRuntimeModel(model, profileID, effort string) error {
+	if profileID != "" {
+		if strings.TrimSpace(profileID) != profileID || model != "" || effort != "" {
+			return fmt.Errorf("%w: API profile selection cannot contain CLI model or effort", ErrInvalidAgentRuntime)
+		}
+		return nil
 	}
-	if settings.Effort != strings.TrimSpace(settings.Effort) {
-		return fmt.Errorf("%w: Codex effort contains surrounding whitespace", ErrInvalidAgentRuntime)
+	if strings.TrimSpace(model) == "" || model != strings.TrimSpace(model) {
+		return fmt.Errorf("%w: runtime model must be a non-empty identifier without surrounding whitespace", ErrInvalidAgentRuntime)
+	}
+	if effort != strings.TrimSpace(effort) {
+		return fmt.Errorf("%w: runtime effort contains surrounding whitespace", ErrInvalidAgentRuntime)
 	}
 	return nil
+}
+
+// ModelProfileID returns the active API reference. Empty means CLI configuration;
+// credentials and endpoint addresses never belong in a persisted selection.
+func (selection RuntimeSelection) ModelProfileID() string {
+	switch selection.Kind {
+	case RuntimeCodex:
+		if selection.Codex != nil {
+			return selection.Codex.ProfileID
+		}
+	case RuntimeClaude:
+		if selection.Claude != nil {
+			return selection.Claude.ProfileID
+		}
+	}
+	return ""
 }
 
 func (selection RuntimeSelection) Validate(agentKind string) error {
 	switch selection.Kind {
 	case RuntimeNative:
-		if selection.Codex != nil {
-			return fmt.Errorf("%w: Native selection contains Codex settings", ErrInvalidAgentRuntime)
+		if selection.Codex != nil || selection.Claude != nil {
+			return fmt.Errorf("%w: Native selection contains external settings", ErrInvalidAgentRuntime)
 		}
 	case RuntimeCodex:
 		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral {
 			return fmt.Errorf("%w: external runtime does not support Agent kind %q", ErrInvalidAgentRuntime, agentKind)
 		}
-		if selection.Codex == nil {
+		if selection.Codex == nil || selection.Claude != nil {
 			return fmt.Errorf("%w: Codex settings are required", ErrInvalidAgentRuntime)
 		}
 		return selection.Codex.validate()
+	case RuntimeClaude:
+		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral {
+			return fmt.Errorf("%w: external runtime does not support Agent kind %q", ErrInvalidAgentRuntime, agentKind)
+		}
+		if selection.Claude == nil || selection.Codex != nil {
+			return fmt.Errorf("%w: Claude settings are required exclusively", ErrInvalidAgentRuntime)
+		}
+		return selection.Claude.validate()
 	default:
 		return fmt.Errorf("%w: unknown runtime %q", ErrInvalidAgentRuntime, selection.Kind)
 	}
@@ -98,6 +154,10 @@ func (preferences RuntimePreferences) Selection(agentKind string) (RuntimeSelect
 	if kind == RuntimeCodex && preferences.Codex != nil {
 		value := *preferences.Codex
 		selection.Codex = &value
+	}
+	if kind == RuntimeClaude && preferences.Claude != nil {
+		value := *preferences.Claude
+		selection.Claude = &value
 	}
 	return selection, selection.Validate(agentKind)
 }
@@ -123,6 +183,9 @@ func mergeRuntimePreferences(parent, child *RuntimePreferences) *RuntimePreferen
 		if child.Selected != "" {
 			merged.Selected = child.Selected
 		}
+		if child.Claude != nil {
+			merged.Claude = child.Claude
+		}
 		if child.Codex != nil {
 			merged.Codex = child.Codex
 		}
@@ -130,6 +193,10 @@ func mergeRuntimePreferences(parent, child *RuntimePreferences) *RuntimePreferen
 	if merged.Codex != nil {
 		value := *merged.Codex
 		merged.Codex = &value
+	}
+	if merged.Claude != nil {
+		value := *merged.Claude
+		merged.Claude = &value
 	}
 	return &merged
 }
@@ -171,7 +238,7 @@ func validateSettingsRuntimes(settings Settings) error {
 			return fmt.Errorf("custom Agent %q: %w", definition.ID, err)
 		}
 		kind := CustomAgentRuntimeKind(definition)
-		if definition.Runtime.Selected == RuntimeCodex && kind != AgentKindIDE && kind != AgentKindGeneral {
+		if (definition.Runtime.Selected == RuntimeCodex || definition.Runtime.Selected == RuntimeClaude) && kind != AgentKindIDE && kind != AgentKindGeneral {
 			return fmt.Errorf("%w: custom Agent %q does not support external execution", ErrInvalidAgentRuntime, definition.ID)
 		}
 	}

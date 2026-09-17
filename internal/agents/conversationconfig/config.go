@@ -46,7 +46,8 @@ type Patch struct {
 	Runtime       *config.RuntimeSelection  `json:"runtime,omitempty"`
 	// Codex replaces the current Codex model/effort together without switching
 	// engines or Agent identity. It also applies to an uncommitted conversation.
-	Codex *config.CodexRuntimeSettings `json:"codex,omitempty"`
+	Codex  *config.CodexRuntimeSettings  `json:"codex,omitempty"`
+	Claude *config.ClaudeRuntimeSettings `json:"claude,omitempty"`
 }
 
 // UnmarshalJSON preserves the semantic difference between omitted and null.
@@ -77,6 +78,14 @@ func (patch *Patch) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("invalid conversation Codex model settings: %w", err)
 			}
 			next.Codex = &value
+		case "claude":
+			var value config.ClaudeRuntimeSettings
+			decoder := json.NewDecoder(bytes.NewReader(raw))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&value); err != nil {
+				return fmt.Errorf("invalid conversation Claude model settings: %w", err)
+			}
+			next.Claude = &value
 		case "runtime":
 			var value config.RuntimeSelection
 			decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -174,11 +183,18 @@ func DefaultWithCustomAgent(runtime *config.Config, agentKind, customAgentID str
 func Merge(runtime *config.Config, base Config, patch Patch) (Config, error) {
 	next := base
 	if patch.Codex != nil {
-		if base.Engine().Kind != config.RuntimeCodex || patch.Runtime != nil || patch.CustomAgentID != nil {
+		if patch.Claude != nil || base.Engine().Kind != config.RuntimeCodex || patch.Runtime != nil || patch.CustomAgentID != nil {
 			return Config{}, ErrRuntimeCapabilityUnsupported
 		}
 		value := *patch.Codex
 		next.Runtime = &config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &value}
+	}
+	if patch.Claude != nil {
+		if base.Engine().Kind != config.RuntimeClaude || patch.Runtime != nil || patch.CustomAgentID != nil {
+			return Config{}, ErrRuntimeCapabilityUnsupported
+		}
+		value := *patch.Claude
+		next.Runtime = &config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &value}
 	}
 	if patch.Runtime != nil {
 		value := cloneSelection(*patch.Runtime)
@@ -244,6 +260,10 @@ func validate(runtime *config.Config, candidate Config, agentKind string, persis
 		return err
 	}
 	if candidate.Engine().Kind != config.RuntimeNative {
+		if candidate.Engine().ModelProfileID() != "" {
+			_, err := config.ResolveRuntimeModel(&clone, candidate.Engine())
+			return err
+		}
 		return nil
 	}
 	if err := config.ApplyAgentModelSelection(&clone, agentKind, candidate.ProfileID, candidate.ThinkingLevel); err != nil {

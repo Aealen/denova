@@ -69,7 +69,7 @@ func (service *Service) PatchConversationConfig(
 		if err := service.requireIdle(resolved); err != nil {
 			return conversationconfig.Snapshot{}, err
 		}
-		return service.host.AgentEngines().ApplyEngineSelection(ctx, project.executionRuntime, sess, runtimeOptions(resolved, ""), next, baseRevision)
+		return service.host.AgentEngines().ApplyEngineSelection(ctx, project.executionRuntime, sess, runtimeOptions(resolved, ""), next, baseRevision, runtimeCfg)
 	}
 	return sess.SetRuntimeConfig(next, baseRevision)
 }

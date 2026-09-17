@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/config"
 	"denova/internal/hostruntime"
 
 	"github.com/Masterminds/semver/v3"
@@ -30,6 +31,8 @@ var ErrVersionUnsupported = errors.New("unsupported App Server version")
 type ProcessOptions struct {
 	Executable string
 	Home       string
+	// API is an execution-local routing snapshot; nil retains CLI configuration.
+	API *config.ResolvedModelSettings
 }
 
 // Connect starts one owned App Server using the user's Codex configuration.
@@ -62,9 +65,13 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	for _, feature := range []string{"shell_tool", "unified_exec", "apply_patch_freeform", "multi_agent", "apps", "browser_use", "browser_use_external", "computer_use", "in_app_browser", "image_generation", "plugins", "hooks", "goals", "memories", "workspace_dependencies", "shell_snapshot"} {
 		args = append(args, "-c", "features."+feature+"=false")
 	}
+	environment := sharedEnvironment(os.Environ(), options.Home)
+	if options.API != nil {
+		args, environment = apiLaunch(args, environment, *options.API)
+	}
 	cmd := exec.Command(options.Executable, args...)
 	cmd.Dir = cwd
-	cmd.Env = hostruntime.WithSystemProxy(setup, sharedEnvironment(os.Environ(), options.Home))
+	cmd.Env = hostruntime.WithSystemProxy(setup, environment)
 	configureProcess(cmd)
 	reader, err := cmd.StdoutPipe()
 	if err != nil {
@@ -88,6 +95,9 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	}
 	c := newClient(reader, writer, func() { _ = writer.Close(); _ = cmd.Process.Kill() })
 	c.cwd = cwd
+	if options.API != nil {
+		c.apiModel = options.API.Model
+	}
 	c.version = version
 	c.workers.Add(1)
 	go c.worker("wait for process", func() {

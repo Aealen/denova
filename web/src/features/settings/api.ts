@@ -132,8 +132,10 @@ export function createSettingsMergePatch(baseline: Settings, draft: Settings): S
   // diff would omit the unchanged model during an effort edit (or lose effort).
   for (const role of ['ide', 'general'] as const) {
     const runtimePatch = settingsPatch.agent_runtimes?.[role]
-    const codex = draft.agent_runtimes?.[role]?.codex
-    if (runtimePatch?.codex && codex) runtimePatch.codex = { ...codex }
+    for (const engine of ['codex', 'claude'] as const) {
+      const settings = draft.agent_runtimes?.[role]?.[engine]
+      if (runtimePatch?.[engine] && settings) runtimePatch[engine] = { ...settings }
+    }
   }
   return settingsPatch
 }

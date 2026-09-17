@@ -69,6 +69,10 @@ func ApplySettingsMergePatch(existing Settings, changes json.RawMessage) (Settin
 		{patch.AgentRuntimes.IDE, next.AgentRuntimes.IDE},
 		{patch.AgentRuntimes.General, next.AgentRuntimes.General},
 	} {
+		if role.changed != nil && role.changed.Claude != nil {
+			value := *role.changed.Claude
+			role.next.Claude = &value
+		}
 		if role.changed != nil && role.changed.Codex != nil {
 			value := *role.changed.Codex
 			role.next.Codex = &value

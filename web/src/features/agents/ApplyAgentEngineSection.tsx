@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
-import type { RuntimePreferences, RuntimeSelection } from '@/features/agent-runtime/types'
+import { runtimeSelection, runtimeModel, type RuntimePreferences } from '@/features/agent-runtime/types'
 
 /** The conversation link supplies the exact target; ordinary Agents visits only edit defaults. */
 export function ApplyAgentEngineSection({ binding, agentKind, customAgentId, runtime, saveDefaults }: {
@@ -19,9 +19,7 @@ export function ApplyAgentEngineSection({ binding, agentKind, customAgentId, run
   const conversation = useConversationConfig(binding)
   const snapshot = conversation.snapshot
   const matches = Boolean(snapshot?.revision && snapshot.agent_kind === agentKind && (snapshot.custom_agent_id ?? '') === (customAgentId ?? ''))
-  const selection: RuntimeSelection | null = runtime.selected === 'codex'
-    ? (runtime.codex ? { kind: 'codex', codex: runtime.codex } : null)
-    : { kind: 'native' }
+  const selection = runtimeSelection(runtime)
 
   const apply = async () => {
     if (!selection || !matches) return
@@ -36,7 +34,7 @@ export function ApplyAgentEngineSection({ binding, agentKind, customAgentId, run
   return <section className="flex flex-col gap-3 border-b border-border pb-5" aria-label={t('agentRuntime.applyTitle')}>
     <h3 className="font-medium">{t('agentRuntime.applyTitle')}</h3>
     <p className="break-all text-muted-foreground">{t('agentRuntime.conversation')}: {binding.session_id}</p>
-    {snapshot && <p className="text-muted-foreground">{t('agentRuntime.applyPreview', { from: t(`agentRuntime.${snapshot.runtime?.kind ?? 'native'}`), to: t(`agentRuntime.${runtime.selected ?? 'native'}`), model: selection?.kind === 'codex' ? selection.codex.model : t('agentRuntime.nativeModelRetained') })}</p>}
+    {snapshot && <p className="text-muted-foreground">{t('agentRuntime.applyPreview', { from: t(`agentRuntime.${snapshot.runtime?.kind ?? 'native'}`), to: t(`agentRuntime.${runtime.selected ?? 'native'}`), model: runtimeModel(selection ?? undefined)?.profile_id ?? runtimeModel(selection ?? undefined)?.model ?? t('agentRuntime.nativeModelRetained') })}</p>}
     <div><Button size="sm" variant="outline" disabled={applying || conversation.loading || conversation.saving || !matches || !selection} onClick={() => void apply()}>{t('agentRuntime.apply')}</Button></div>
     {conversation.error && <p role="alert" className="text-destructive">{conversation.error}</p>}
     {message && <p role="status">{message}</p>}

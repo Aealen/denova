@@ -11,6 +11,7 @@ import (
 	"denova/config"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/external"
+	"denova/internal/agents/external/claude"
 	"denova/internal/agents/external/codex"
 	"denova/internal/hostruntime"
 )
@@ -28,9 +29,13 @@ var (
 type Engines struct {
 	// Admissions may prepare concurrently. A selection change excludes their
 	// final accept step across Writing and AgentChat, which share one journal.
-	admission  sync.RWMutex
-	entries    map[config.RuntimeID]*engineEntry
-	Operations external.Service
+	admission      sync.RWMutex
+	entries        map[config.RuntimeID]*engineEntry
+	Operations     external.Service
+	apiMu          sync.Mutex
+	apiConnections map[external.Connection]struct{}
+	apiClosed      bool
+	apiFactory     func(context.Context, config.RuntimeID, config.ResolvedModelSettings) (external.Connection, error)
 }
 
 type engineEntry struct {
@@ -44,9 +49,17 @@ type engineEntry struct {
 }
 
 func NewEngines() *Engines {
-	return &Engines{entries: map[config.RuntimeID]*engineEntry{config.RuntimeCodex: {
+	return &Engines{apiConnections: make(map[external.Connection]struct{}), apiFactory: connectRuntimeAPI, entries: map[config.RuntimeID]*engineEntry{config.RuntimeCodex: {
 		id: config.RuntimeCodex, state: external.ConnectionState{Status: "unchecked"}, factory: connectCodex,
-	}}}
+	}, config.RuntimeClaude: {id: config.RuntimeClaude, state: external.ConnectionState{Status: "unchecked"}, factory: connectClaude}}}
+}
+
+func connectClaude(ctx context.Context) (external.Connection, error) {
+	launch := hostruntime.DiscoverClaude(os.Environ())
+	if launch.Executable == "" {
+		return nil, ErrEngineNotInstalled
+	}
+	return claude.Connect(ctx, claude.ProcessOptions{Launch: launch})
 }
 
 func connectCodex(ctx context.Context) (external.Connection, error) {
@@ -63,7 +76,7 @@ func connectCodex(ctx context.Context) (external.Connection, error) {
 
 func (engines *Engines) Catalog() []EngineDescriptor {
 	items := []EngineDescriptor{engineDescriptor(config.RuntimeNative)}
-	for _, id := range []config.RuntimeID{config.RuntimeCodex} {
+	for _, id := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude} {
 		entry := engines.entries[id]
 		entry.mu.Lock()
 		items = append(items, entry.descriptor())
@@ -113,8 +126,14 @@ func (entry *engineEntry) connect(ctx context.Context) error {
 		if errors.Is(err, ErrEngineNotInstalled) {
 			entry.state = external.ConnectionState{Status: "not_installed", ReasonKey: "agentRuntime.notInstalled"}
 		}
-		if errors.Is(err, codex.ErrVersionUnsupported) {
+		if errors.Is(err, codex.ErrVersionUnsupported) || errors.Is(err, claude.ErrVersionUnsupported) {
 			entry.state = external.ConnectionState{Status: "incompatible", ReasonKey: "agentRuntime.incompatibleVersion"}
+		}
+		if entry.id == config.RuntimeClaude && entry.state.Status == "not_installed" {
+			entry.state.ReasonKey = "agentRuntime.claudeNotInstalled"
+		}
+		if entry.id == config.RuntimeClaude && entry.state.Status == "incompatible" {
+			entry.state.ReasonKey = "agentRuntime.claudeIncompatibleVersion"
 		}
 		return err
 	}
@@ -173,13 +192,16 @@ func (engines *Engines) Models(ctx context.Context, id config.RuntimeID) (extern
 
 // Acquire pins the connection from preflight through durable settlement. The
 // caller releases on acceptance failure or after Wait, including cancellation.
-func (engines *Engines) Acquire(ctx context.Context, selection config.RuntimeSelection) (external.Adapter, func(), error) {
+func (engines *Engines) Acquire(ctx context.Context, selection config.RuntimeSelection, cfg config.Config) (external.Adapter, func(), error) {
 	entry, err := engines.entry(selection.Kind)
 	if err != nil {
 		return nil, nil, err
 	}
 	if err := selection.Validate(config.AgentKindGeneral); err != nil {
 		return nil, nil, err
+	}
+	if selection.ModelProfileID() != "" {
+		return engines.acquireAPI(ctx, selection, cfg)
 	}
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
@@ -197,9 +219,18 @@ func (engines *Engines) Acquire(ctx context.Context, selection config.RuntimeSel
 	if err != nil {
 		return nil, nil, err
 	}
+	var modelID, effort string
+	switch selection.Kind {
+	case config.RuntimeCodex:
+		modelID, effort = selection.Codex.Model, selection.Codex.Effort
+	case config.RuntimeClaude:
+		modelID, effort = selection.Claude.Model, selection.Claude.Effort
+	default:
+		return nil, nil, ErrEngineNotFound
+	}
 	valid := false
 	for _, model := range models.Items {
-		if model.ID == selection.Codex.Model && (selection.Codex.Effort == "" || slices.Contains(model.Efforts, selection.Codex.Effort)) {
+		if model.ID == modelID && (effort == "" || slices.Contains(model.Efforts, effort)) {
 			valid = true
 			break
 		}
@@ -214,6 +245,13 @@ func (engines *Engines) Acquire(ctx context.Context, selection config.RuntimeSel
 
 func (engines *Engines) Close() error {
 	var failures []error
+	engines.apiMu.Lock()
+	engines.apiClosed = true
+	for connection := range engines.apiConnections {
+		failures = append(failures, connection.Close())
+		delete(engines.apiConnections, connection)
+	}
+	engines.apiMu.Unlock()
 	for _, entry := range engines.entries {
 		entry.mu.Lock()
 		entry.closed = true

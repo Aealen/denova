@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"denova/config"
 	"errors"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -91,6 +92,8 @@ func bindConversationConfigProject(c *app.RequestContext, binding *appsvc.Conver
 
 func writeConversationConfigError(c *app.RequestContext, err error) {
 	switch {
+	case errors.Is(err, config.ErrRuntimeModelProfile):
+		writeErrorKey(c, consts.StatusUnprocessableEntity, "agentRuntime.apiProfileUnavailable")
 	case errors.Is(err, agentruntime.ErrEngineNotFound):
 		writeErrorKey(c, consts.StatusNotFound, "agentRuntime.notFound")
 	case errors.Is(err, agentruntime.ErrEngineNotInstalled):

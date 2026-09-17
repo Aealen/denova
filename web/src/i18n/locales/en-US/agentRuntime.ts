@@ -1,4 +1,19 @@
 const agentRuntime = {
+  'agentRuntime.apiProfileHint': "Uses the API connection from the Denova model profile without CLI sign-in. The engine manages sampling and reasoning; profile temperature, output limit and context window settings do not apply.",
+  'agentRuntime.cliConnection': "CLI account status",
+  'agentRuntime.cliModels': "CLI models",
+  'agentRuntime.apiModels': "Denova API models",
+  'agentRuntime.apiModelLabel': "API · {{name}}",
+  'agentRuntime.noCompatibleProfiles': "No compatible API models",
+  'agentRuntime.profilesFailed': "Could not load API model profiles. Refresh and retry.",
+  'agentRuntime.apiProfileUnavailable': "The API profile is missing or incompatible. Codex requires Responses and Claude Code requires Messages; protocol options and session mappings are not supported.",
+
+  'agentRuntime.claude': "Claude Code",
+  'agentRuntime.sharedClaudeHome': "Uses local Claude Code sign-in and provider environment settings. Model aliases are resolved by Claude Code; availability depends on your account.",
+  'agentRuntime.claudeLoginInTerminal': "Run claude auth login on the computer running Denova, then check the connection again.",
+  'agentRuntime.claudeNotInstalled': "Claude Code was not found. Install it on this computer first.",
+  'agentRuntime.claudeIncompatibleVersion': "The Claude Code version is too old or unrecognized. Use 2.1.259 or newer.",
+
   'agentRuntime.conversationModelOnly': "Model and reasoning effort apply only to this conversation.",
   'agentRuntime.modelChangeIdle': "Wait for this execution and any pending questions to finish before changing the model or effort.",
   'agentRuntime.configuration.savedOtherRuntimes': "Saved settings for other engines",
@@ -42,7 +57,7 @@ const agentRuntime = {
   'agentRuntime.connectionLost': "The engine connection was lost.",
   'agentRuntime.notInstalled': "Codex CLI was not found. Install it on this computer first.",
   'agentRuntime.incompatibleVersion': "The Codex CLI version is too old or unrecognized. Use version 0.130.0 or newer.",
-  'agentRuntime.notReady': "The engine is not ready. Check the connection; if sign-in is required, run codex login on the computer running Denova.",
+  'agentRuntime.notReady': "The engine is not ready. Check its connection and sign-in status in Agents settings.",
   'agentRuntime.modelUnavailable': "The selected model or reasoning effort is unavailable. Select another.",
   'agentRuntime.busy': "The conversation is running or has an unresolved question or tool outcome.",
   'agentRuntime.capabilityUnsupported': "This runtime does not support this operation.",

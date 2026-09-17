@@ -34,10 +34,20 @@ import (
 // AgentChat with the real executable. Only model responses are local fixtures;
 // tools, Ask, project stores, receipts and callbacks are production paths.
 func TestInstalledExternalProductExecution(t *testing.T) {
-	executable := os.Getenv("DENOVA_TEST_CODEX_EXE")
-	if executable == "" {
-		t.Skip("set DENOVA_TEST_CODEX_EXE to test product execution with App Server")
+	for _, engine := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude} {
+		t.Run(string(engine), func(t *testing.T) {
+			executable := os.Getenv("DENOVA_TEST_" + strings.ToUpper(string(engine)) + "_EXE")
+			if executable == "" {
+				t.Skip("set the corresponding DENOVA_TEST runtime executable to exercise real CLI execution")
+			}
+			for _, source := range []string{"cli", "api"} {
+				t.Run(source, func(t *testing.T) { testInstalledProductExecution(t, engine, executable, source) })
+			}
+		})
 	}
+}
+
+func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, executable, source string) {
 	for _, scenario := range []struct{ name, kind, contract string }{
 		{"writing", config.AgentKindIDE, ""}, {"general", config.AgentKindGeneral, ""},
 		{"custom-writing", config.AgentKindIDE, "writing.primary.v1"}, {"custom-general", config.AgentKindGeneral, "project.general.v1"},
@@ -48,7 +58,11 @@ func TestInstalledExternalProductExecution(t *testing.T) {
 			var mu sync.Mutex
 			var requests []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/v1/responses" {
+				if strings.Contains(r.URL.Path, "count_tokens") {
+					fmt.Fprint(w, `{"input_tokens":100}`)
+					return
+				}
+				if !strings.HasPrefix(r.URL.Path, "/v1/messages") && r.URL.Path != "/v1/responses" {
 					http.NotFound(w, r)
 					return
 				}
@@ -61,6 +75,14 @@ func TestInstalledExternalProductExecution(t *testing.T) {
 				requests = append(requests, string(raw))
 				ordinal := len(requests)
 				mu.Unlock()
+				if source == "api" {
+					var body struct {
+						Model string `json:"model"`
+					}
+					if err := json.Unmarshal(raw, &body); err != nil || body.Model != "gateway-model" || r.Header.Get("X-Tenant") != "product-fixture" {
+						t.Errorf("API model or tenant routing lost: model=%q", body.Model)
+					}
+				}
 				var item map[string]any
 				switch ordinal {
 				case 1:
@@ -75,6 +97,10 @@ func TestInstalledExternalProductExecution(t *testing.T) {
 					body, _ := json.Marshal(event)
 					_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event["type"], body)
 				}
+				if engine == config.RuntimeClaude {
+					emitClaudeProductFixture(emit, ordinal, item)
+					return
+				}
 				id := fmt.Sprintf("response_%d", ordinal)
 				emit(map[string]any{"type": "response.created", "response": map[string]any{"id": id, "object": "response", "status": "in_progress", "output": []any{}}})
 				emit(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item})
@@ -87,13 +113,23 @@ func TestInstalledExternalProductExecution(t *testing.T) {
 				t.Setenv(key, hostRoot)
 			}
 			t.Setenv("PATH", filepath.Dir(executable)+string(os.PathListSeparator)+os.Getenv("PATH"))
-			home := filepath.Join(hostRoot, "Denova", "runtimes", "codex")
-			if err := os.MkdirAll(home, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			configuration := fmt.Sprintf("model = \"gpt-5.5\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Local fixture\"\nbase_url = %q\nwire_api = \"responses\"\nexperimental_bearer_token = \"fixture-only\"\n[features]\nenable_request_compression = false\n", server.URL+"/v1")
-			if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(configuration), 0o600); err != nil {
-				t.Fatal(err)
+			if engine == config.RuntimeClaude {
+				t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(hostRoot, "claude"))
+				t.Setenv("ANTHROPIC_API_KEY", "fixture-only")
+				t.Setenv("ANTHROPIC_BASE_URL", server.URL)
+				for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
+					t.Setenv(key, "")
+				}
+			} else {
+				home := filepath.Join(hostRoot, "Denova", "runtimes", "codex")
+				if err := os.MkdirAll(home, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				configuration := fmt.Sprintf("model = \"gpt-5.5\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Local fixture\"\nbase_url = %q\nwire_api = \"responses\"\nexperimental_bearer_token = \"fixture-only\"\n[features]\nenable_request_compression = false\n", server.URL+"/v1")
+				if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(configuration), 0o600); err != nil {
+					t.Fatal(err)
+				}
+
 			}
 			root := t.TempDir()
 			workspace := filepath.Join(root, "project")
@@ -101,7 +137,22 @@ func TestInstalledExternalProductExecution(t *testing.T) {
 				t.Fatal(err)
 			}
 			preference := &config.RuntimePreferences{Selected: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "gpt-5.5"}}
+			if engine == config.RuntimeClaude {
+				preference = &config.RuntimePreferences{Selected: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "sonnet"}}
+			}
 			cfg := config.Config{DenovaDir: root, Workspace: workspace, ProjectID: "product-fixture", ProjectStoreDir: filepath.Join(root, "store"), AgentRuntimes: config.AgentRuntimeSettings{IDE: preference, General: preference}}
+			if source == "api" {
+				protocol := "openai-responses"
+				preference.Codex = &config.CodexRuntimeSettings{ProfileID: "api-profile"}
+				if engine == config.RuntimeClaude {
+					protocol = "anthropic-messages"
+					preference.Codex = nil
+					preference.Claude = &config.ClaudeRuntimeSettings{ProfileID: "api-profile"}
+					t.Setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:1")
+				}
+				cfg.ModelEndpoints = []config.ModelEndpointSettings{{ID: "api-endpoint", Provider: "openai-compatible", Protocol: protocol, BaseURL: server.URL + "/v1", APIKey: "api-fixture-only", Headers: map[string]string{"X-Tenant": "product-fixture"}}}
+				cfg.ModelProfiles = []config.ModelProfileSettings{{ID: "api-profile", EndpointID: "api-endpoint", Model: "gateway-model"}}
+			}
 			customID := ""
 			if scenario.contract != "" {
 				customID = "fixture-custom"
@@ -217,7 +268,7 @@ func TestInstalledExternalProductExecution(t *testing.T) {
 			next.Runtime = &config.RuntimeSelection{Kind: config.RuntimeNative}
 			next.ProfileID, next.ThinkingLevel = "fixture", "off"
 			opts := agentrun.Options{ProjectID: cfg.ProjectID, StateRoot: cfg.ProjectStoreDir, Workspace: workspace, SessionID: sess.ID, AgentKind: scenario.kind, Mode: "agent_chat"}
-			if _, err := engines.ApplyEngineSelection(ctx, nativeRuntime, sess, opts, next, current.Revision); err != nil {
+			if _, err := engines.ApplyEngineSelection(ctx, nativeRuntime, sess, opts, next, current.Revision, config.Config{}); err != nil {
 				t.Fatal(err)
 			}
 			nativeSettings := `[[model_endpoints]]
@@ -278,4 +329,27 @@ func (m *continuationFixtureModel) Generate(_ context.Context, input []*agent.Me
 func (m *continuationFixtureModel) Stream(ctx context.Context, input []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
 	message, err := m.Generate(ctx, input, options...)
 	return agent.StreamReaderFromArray([]*agent.Message{message}), err
+}
+
+// Emit the actual Anthropic streaming protocol consumed by the CLI, including
+// incremental tool JSON. Returning whole input only on block_start is not a
+// valid substitute: the CLI assembles its tool arguments from deltas.
+func emitClaudeProductFixture(emit func(map[string]any), ordinal int, item map[string]any) {
+	id := fmt.Sprintf("msg_%d", ordinal)
+	emit(map[string]any{"type": "message_start", "message": map[string]any{"id": id, "type": "message", "role": "assistant", "model": "claude-sonnet-5", "content": []any{}, "stop_reason": nil, "usage": map[string]int{"input_tokens": 100, "output_tokens": 0}}})
+	var block, delta map[string]any
+	stop := "end_turn"
+	if item["type"] == "function_call" {
+		stop = "tool_use"
+		block = map[string]any{"type": "tool_use", "id": item["call_id"], "name": "mcp__denova__" + item["name"].(string), "input": map[string]any{}}
+		delta = map[string]any{"type": "input_json_delta", "partial_json": item["arguments"]}
+	} else {
+		block = map[string]any{"type": "text", "text": ""}
+		delta = map[string]any{"type": "text_delta", "text": "The restrained draft is saved."}
+	}
+	emit(map[string]any{"type": "content_block_start", "index": 0, "content_block": block})
+	emit(map[string]any{"type": "content_block_delta", "index": 0, "delta": delta})
+	emit(map[string]any{"type": "content_block_stop", "index": 0})
+	emit(map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": stop}, "usage": map[string]int{"output_tokens": 50}})
+	emit(map[string]any{"type": "message_stop"})
 }

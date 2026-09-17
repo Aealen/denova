@@ -542,7 +542,7 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
                 summary={t('agentRuntime.configuration.switchToEdit')}
               >
                 <fieldset disabled aria-label={t('agentRuntime.configuration.savedOtherRuntimes')} className="flex min-w-0 flex-col gap-5 opacity-70">
-                  {resolvedEngine.selected === 'codex' ? <p className="text-[11px] leading-relaxed text-[var(--nova-text-muted)]">{t('agentRuntime.nativeInactive')}</p> : null}
+                  {resolvedEngine.selected !== 'native' ? <p className="text-[11px] leading-relaxed text-[var(--nova-text-muted)]">{t('agentRuntime.nativeInactive')}</p> : null}
                   {sections.some((section) => section.id === 'native.model' && section.state === 'inactive') ? <AgentModelSection value={modelValue} inherited={inheritedModel} profiles={profileOptions} onChange={() => undefined} /> : null}
                   {sections.some((section) => section.id === 'native.permissions' && section.state === 'inactive') ? <AgentToolSection value={toolValue} rows={configuredToolRows} onChange={() => undefined} /> : null}
                   {resolvedContext && sections.some((section) => section.id === 'native.context_policy' && section.state === 'inactive') ? <AgentRuntimeContextSection value={contextValue} resolved={resolvedContext} inputBudget={false} onChange={() => undefined} /> : null}
@@ -551,8 +551,12 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
                     ? <AgentDelegationPolicySection value={customDelegation} runtimeKind={activeAgent} subAgents={effective.sub_agents ?? []} onChange={() => undefined} />
                     : subAgentParent ? <AgentSubAgentSection agent={subAgentParent} toolRows={configuredToolRows} generalSettings={draft.general_sub_agents} effectiveGeneralSettings={effective.general_sub_agents} subAgents={draft.sub_agents ?? []} effectiveSubAgents={effective.sub_agents ?? []} profiles={profileOptions} onGeneralChange={() => undefined} onChange={() => undefined} /> : null : null}
                   {resolvedEngine.codex && sections.some((section) => section.id === 'codex.model' && section.state === 'inactive') ? <dl className="grid grid-cols-2 gap-2">
-                    <dt>{t('agentRuntime.codex')} · {t('agentRuntime.model')}</dt><dd className="break-words">{resolvedEngine.codex.model}</dd>
+                    <dt>{t('agentRuntime.codex')} · {t('agentRuntime.model')}</dt><dd className="break-words">{resolvedEngine.codex.profile_id ?? resolvedEngine.codex.model}</dd>
                     <dt>{t('agentRuntime.effort')}</dt><dd>{resolvedEngine.codex.effort ?? t('agentRuntime.defaultEffort')}</dd>
+                  </dl> : null}
+                  {resolvedEngine.claude && sections.some((section) => section.id === 'claude.model' && section.state === 'inactive') ? <dl className="grid grid-cols-2 gap-2">
+                    <dt>{t('agentRuntime.claude')} · {t('agentRuntime.model')}</dt><dd className="break-words">{resolvedEngine.claude.profile_id ?? resolvedEngine.claude.model}</dd>
+                    <dt>{t('agentRuntime.effort')}</dt><dd>{resolvedEngine.claude.effort ?? t('agentRuntime.defaultEffort')}</dd>
                   </dl> : null}
                 </fieldset>
               </AgentConfigurationDisclosure> : null}

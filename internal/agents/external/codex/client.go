@@ -61,6 +61,7 @@ type Client struct {
 	workers       sync.WaitGroup
 	cwd           string
 	version       string
+	apiModel      string
 	accountStatus string
 }
 

@@ -112,7 +112,7 @@ func (execution Execution) Start(ctx context.Context, request agentchat.ChatRequ
 	if err != nil {
 		return nil, err
 	}
-	adapter, release, err := execution.engines.Acquire(ctx, prepared.Input.Selection)
+	adapter, release, err := execution.engines.Acquire(ctx, prepared.Input.Selection, execution.runtime.Config)
 	if err != nil {
 		return nil, err
 	}

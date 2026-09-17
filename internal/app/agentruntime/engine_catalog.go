@@ -34,8 +34,8 @@ func engineDescriptor(id config.RuntimeID) EngineDescriptor {
 	case config.RuntimeNative:
 		item.NameKey, item.Status = "agentRuntime.native", "ready"
 		item.Capabilities = EngineCapabilities{AskUser: true, Cancel: true, InteractiveApproval: true, Delegation: true, Goal: true, Queue: true, Steer: true, Pause: true}
-	case config.RuntimeCodex:
-		item.NameKey, item.Status = "agentRuntime.codex", "unchecked"
+	case config.RuntimeCodex, config.RuntimeClaude:
+		item.NameKey, item.Status = "agentRuntime."+string(id), "unchecked"
 		item.Capabilities = EngineCapabilities{AskUser: true, Cancel: true}
 	}
 	item.ConfigurationSections = EngineConfigurationSections(id)
@@ -63,6 +63,8 @@ const (
 	SectionNativeContext     ConfigurationSectionID = "native.context_policy"
 	SectionNativeCheckpoint  ConfigurationSectionID = "native.checkpoint"
 	SectionNativeSubagents   ConfigurationSectionID = "native.subagents"
+	SectionClaudeModel       ConfigurationSectionID = "claude.model"
+	SectionClaudePolicy      ConfigurationSectionID = "claude.execution_policy"
 	SectionCodexModel        ConfigurationSectionID = "codex.model"
 	SectionCodexPolicy       ConfigurationSectionID = "codex.execution_policy"
 )
@@ -119,15 +121,18 @@ func EngineConfigurationSections(selected config.RuntimeID) []ConfigurationSecti
 		}
 		sections = append(sections, section)
 	}
-	for _, id := range []ConfigurationSectionID{SectionCodexModel, SectionCodexPolicy} {
-		section := ConfigurationSection{ID: id, Owner: "codex", State: "editable"}
-		if id == "codex.execution_policy" {
-			section.State, section.ReasonKey = "read_only", "agentRuntime.configuration.managedPolicy"
+	for _, engine := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude} {
+		for _, suffix := range []string{"model", "execution_policy"} {
+			section := ConfigurationSection{ID: ConfigurationSectionID(string(engine) + "." + suffix), Owner: string(engine), State: "editable"}
+			if suffix == "execution_policy" {
+				section.State, section.ReasonKey = "read_only", "agentRuntime.configuration.managedPolicy"
+			}
+			if selected != engine {
+				section.State, section.ReasonKey = "inactive", "agentRuntime.configuration.otherRuntime"
+			}
+			sections = append(sections, section)
 		}
-		if selected != config.RuntimeCodex {
-			section.State, section.ReasonKey = "inactive", "agentRuntime.configuration.otherRuntime"
-		}
-		sections = append(sections, section)
 	}
+
 	return sections
 }

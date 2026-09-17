@@ -1,3 +1,4 @@
+import { runtimeModel, runtimeModelKey, runtimeModelFromKey } from '@/features/agent-runtime/types'
 import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -18,6 +19,7 @@ import { normalizeThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from '@/f
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import type { ConversationConfigController } from '@/features/conversation-config/types'
 import { fetchEngineModels } from '@/features/agent-runtime/api'
+import { useRuntimeProfiles } from '@/features/agent-runtime/api-profiles'
 import type { EngineModels } from '@/features/agent-runtime/types'
 
 interface ModelProfileSwitcherProps {
@@ -121,8 +123,10 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [engineModels, setEngineModels] = useState<EngineModels | null>(null)
   const runtime = conversationConfig?.snapshot?.runtime
-  const codex = runtime?.kind === 'codex' ? runtime.codex : undefined
-  const external = Boolean(codex)
+  const engineKind = runtime?.kind ?? 'native'
+  const engineSettings = runtimeModel(runtime)
+  const external = Boolean(engineSettings)
+  const { profiles, loaded: profilesLoaded, failed: profilesFailed } = useRuntimeProfiles(engineKind)
   // Model profiles are user-scoped. Global conversations (notably user-wide
   // automations) therefore remain configurable without a workspace path.
   const enabled = Boolean(agentKey && conversationConfig)
@@ -144,7 +148,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     const load = async () => {
       try {
         if (external) {
-          const catalog = await fetchEngineModels('codex')
+          const catalog = await fetchEngineModels(engineKind)
           if (active) setEngineModels(catalog)
         } else {
           const next = await fetchSettings()
@@ -157,19 +161,19 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     }
     void load()
     return () => { active = false }
-  }, [enabled, external, t])
+  }, [enabled, external, engineKind, t])
 
   const options = useMemo(
     () => external
-      ? (engineModels?.items ?? []).map((model) => ({ id: model.id, label: model.display_name, modelLabel: model.display_name }))
+      ? [...(engineModels?.items ?? []).map((model) => ({ id: `cli:${model.id}`, label: model.display_name, modelLabel: model.display_name })), ...profiles.map(profile => ({ ...profile, label: t('agentRuntime.apiModelLabel', { name: profile.label }) }))]
       : buildModelProfileOptions(settings, t),
-    [settings, engineModels, external, t],
+    [settings, engineModels, profiles, external, t],
   )
-  const currentProfile = codex?.model ?? (conversationConfig?.snapshot?.profile_id || 'default')
-  const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || currentProfile
-  const currentThinkingLevel = codex ? codex.effort || 'default' : normalizeThinkingLevel(conversationConfig?.snapshot?.thinking_level) ?? ''
-  const engineModel = engineModels?.items.find((model) => model.id === codex?.model)
-  const thinkingLevels: readonly string[] = codex
+  const currentProfile = engineSettings ? runtimeModelKey(engineSettings) : (conversationConfig?.snapshot?.profile_id || 'default')
+  const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || engineSettings?.profile_id || engineSettings?.model || currentProfile
+  const currentThinkingLevel = engineSettings ? engineSettings.profile_id ? '' : engineSettings.effort || 'default' : normalizeThinkingLevel(conversationConfig?.snapshot?.thinking_level) ?? ''
+  const engineModel = engineModels?.items.find((model) => model.id === engineSettings?.model)
+  const thinkingLevels: readonly string[] = engineSettings
     ? (engineModel ? ['default', ...engineModel.efforts] : [])
     : THINKING_LEVELS
   const thinkingOptions = thinkingLevels.map((value) => ({ value, label: t(`chat.modelProfile.thinking.${value}`, { defaultValue: value }) }))
@@ -182,10 +186,10 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     if (!conversationConfig || disabled || conversationConfig.saving || savingSelection || (external && runActive)) return
     setSavingSelection(selection)
     try {
-      const saved = await conversationConfig.patch(codex
-        ? { codex: selection.kind === 'profile'
-          ? { model: selection.value }
-          : { model: codex.model, ...(selection.value === 'default' ? {} : { effort: selection.value }) } }
+      const saved = await conversationConfig.patch(engineSettings
+        ? { [engineKind]: selection.kind === 'profile'
+          ? runtimeModelFromKey(selection.value)
+          : { model: engineSettings.model, ...(selection.value === 'default' ? {} : { effort: selection.value }) } }
         : selection.kind === 'profile'
         ? { profile_id: selection.value }
         : { thinking_level: selection.value as ThinkingLevel })
@@ -196,7 +200,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   }
 
   const selectProfile = async (profileID: string) => {
-    if (!conversationConfig || (codex && profileID === codex.model)) return
+    if (!conversationConfig || (engineSettings && profileID === runtimeModelKey(engineSettings))) return
     await saveConversationSelection({ kind: 'profile', value: profileID })
   }
 
@@ -210,7 +214,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     enabled,
     ready: external || settings !== null,
     external,
-    selectionDisabled: disabled || Boolean(savingSelection) || Boolean(conversationConfig?.saving) || (external && (runActive || !engineModels)),
+    selectionDisabled: disabled || Boolean(savingSelection) || Boolean(conversationConfig?.saving) || (external && (runActive || (!engineModels && !profilesLoaded))),
     options,
     currentProfile,
     currentModelLabel,
@@ -219,7 +223,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     currentThinkingLevelLabel,
     currentSelectionLabel,
     savingSelection,
-    error: catalogError || conversationConfig?.error || null,
+    error: (profilesFailed ? t('agentRuntime.profilesFailed') : null) || (engineSettings?.profile_id ? null : catalogError) || conversationConfig?.error || null,
     saving: Boolean(conversationConfig?.saving) || Boolean(savingSelection),
     selectProfile,
     selectThinkingLevel,
@@ -266,6 +270,7 @@ function ModelProfileOptions({
           {t('chat.modelProfile.empty')}
         </DropdownMenuItem>
       ) : null}</DropdownMenuGroup>
+      {thinkingOptions.length > 0 && <>
       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
       <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium text-[var(--nova-text-faint)]">
         {t('chat.modelProfile.thinkingSection')}
@@ -297,6 +302,7 @@ function ModelProfileOptions({
           )
         })}
       </div>
+      </>}
       {error ? (
         <>
           <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />

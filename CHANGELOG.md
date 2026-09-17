@@ -14,8 +14,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
-- 写作、General 及对应自定义 Agent 可在 Agents 页选择 Native 或 Codex 执行引擎，分别保留专属配置；Codex 复用本机配置、账号与代理，支持提问、领域工具和会话历史续接。
-- Writing, General, and their custom Agents can select Native or Codex on the Agents page and retain separate engine settings. Codex reuses local configuration, accounts, and proxies while supporting questions, domain tools, and conversation history.
+- 写作、General 及对应自定义 Agent 可在 Agents 页选择 Native、Codex 或 Claude Code 执行引擎，分别保留专属配置；外部引擎可复用本机登录或选择 Denova 中兼容的 API 模型，无需修改 CLI 配置，支持提问、领域工具和会话历史续接。
+- Writing, General, and their custom Agents can select Native, Codex, or Claude Code on the Agents page and retain separate engine settings. External engines can use local sign-in or compatible API models configured in Denova without editing CLI configuration, while supporting questions, domain tools, and conversation history.
 
 - 首次将已有会话切换到外部引擎时保存 journal 备份；启用后的会话和 Agent Profile 使用新格式，v0.4.5 无法读取，切回 Native 不会降级格式。
 - Existing conversations are backed up before their first external-engine switch. Enabled conversations and Agent Profiles use a new format unreadable by v0.4.5; switching back to Native does not downgrade it.

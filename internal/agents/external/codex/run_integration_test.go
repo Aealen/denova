@@ -40,7 +40,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 	}
 	installedVersion := strings.TrimPrefix(strings.TrimSpace(string(versionOutput)), "codex-cli ")
 	t.Logf("Installed App Server version: %s", installedVersion)
-	for _, scenario := range []string{"ask", "patch", "cancel", "images"} {
+	for _, scenario := range []string{"ask", "patch", "cancel", "images", "api"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
@@ -70,6 +70,9 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 					return
 				}
 				mu.Lock()
+				if scenario == "api" && (!bytes.Contains(body, []byte(`"model":"fixture-api-model"`)) || r.Header.Get("X-Tenant") != "api-tenant" || r.Header.Get("X-Unexpected") != "") {
+					t.Error("API model or custom header was not applied")
+				}
 				requests = append(requests, body)
 				ordinal := len(requests)
 				mu.Unlock()
@@ -107,11 +110,25 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(home, ".env"), []byte("DENOVA_FIXTURE_CODEX_KEY=fixture-only\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			client, err := Connect(ctx, ProcessOptions{Executable: executable, Home: home})
+			options := ProcessOptions{Executable: executable, Home: home}
+			if scenario == "api" {
+				options.API = &config.ResolvedModelSettings{BaseURL: server.URL + "/v1", APIKey: "fixture-only", Model: "fixture-api-model", Headers: map[string]string{"X-Tenant": "api-tenant"}}
+				configuration = "model_provider = \"denova\"\n[model_providers.denova]\nname=\"Wrong\"\nbase_url=\"http://127.0.0.1:1\"\nhttp_headers={\"X-Unexpected\"=\"inherited-secret\"}\n[features]\nenable_request_compression=false\n"
+				if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(configuration), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			client, err := Connect(ctx, options)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer client.Close()
+			defer func() {
+				data, err := os.ReadFile(filepath.Join(home, "config.toml"))
+				if err != nil || string(data) != configuration {
+					t.Error("runtime changed CLI configuration")
+				}
+			}()
 			if client.Version() != installedVersion {
 				t.Fatalf("reported engine version = %q, want installed version %q", client.Version(), installedVersion)
 			}
@@ -121,6 +138,9 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 				Instructions: "Use the host tools to carry out the user request.", Text: "Ask which tone to use, then report the result.",
 				History: []external.Message{{Role: "user", Text: "Previous user context."}, {Role: "assistant", Text: "Previous confirmed content."}},
 				Tools:   []external.Tool{{Name: "ask", Description: "Ask the user for information.", Schema: json.RawMessage(`{"type":"object","properties":{"questions":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"prompt":{"type":"string"}},"required":["id","prompt"]}}},"required":["questions"]}`)}},
+			}
+			if scenario == "api" {
+				input.Selection.Codex = &config.CodexRuntimeSettings{ProfileID: "api-profile"}
 			}
 			if scenario == "images" {
 				var picture bytes.Buffer

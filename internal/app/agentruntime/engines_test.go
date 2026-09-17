@@ -51,7 +51,7 @@ func TestEngineCatalogIsLazyAndConnectionLeaseProtectsAcceptedOperation(t *testi
 		t.Fatalf("Native invoked an external engine: %v", err)
 	}
 	selection := config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "runtime-model", Effort: "high"}}
-	adapter, release, err := engines.Acquire(ctx, selection)
+	adapter, release, err := engines.Acquire(ctx, selection, config.Config{})
 	if err != nil || adapter != connection || starts != 1 {
 		t.Fatalf("acquire failed: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestEngineCatalogIsLazyAndConnectionLeaseProtectsAcceptedOperation(t *testi
 	if err != nil || checked.Status != "auth_required" || starts != 2 || previous.closes != 1 {
 		t.Fatalf("idle check did not reload local credentials: starts=%d closes=%d state=%#v err=%v", starts, previous.closes, checked, err)
 	}
-	if _, _, err := engines.Acquire(ctx, selection); !errors.Is(err, ErrEngineNotReady) {
+	if _, _, err := engines.Acquire(ctx, selection, config.Config{}); !errors.Is(err, ErrEngineNotReady) {
 		t.Fatalf("signed-out runtime executed: %v", err)
 	}
 	previous = connection
@@ -81,7 +81,7 @@ func TestEngineCatalogIsLazyAndConnectionLeaseProtectsAcceptedOperation(t *testi
 	}
 	connection.state.Status = "ready"
 	selection.Codex.Effort = "unsupported"
-	if _, _, err := engines.Acquire(ctx, selection); !errors.Is(err, ErrEngineModelUnavailable) {
+	if _, _, err := engines.Acquire(ctx, selection, config.Config{}); !errors.Is(err, ErrEngineModelUnavailable) {
 		t.Fatalf("unavailable effort accepted: %v", err)
 	}
 	if _, err := engines.Models(ctx, config.RuntimeNative); !errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported) {

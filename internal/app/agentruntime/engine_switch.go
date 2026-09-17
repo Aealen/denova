@@ -37,16 +37,16 @@ func (engines *Engines) AdmitExecution(ctx context.Context, sess *session.Sessio
 
 // ApplyEngineSelection validates and commits under shared admission. Saving
 // Agent defaults deliberately neither calls this method nor probes an engine.
-func (engines *Engines) ApplyEngineSelection(ctx context.Context, native *execution.Runtime, sess *session.Session, options agentrun.Options, next conversationconfig.Config, revision uint64) (conversationconfig.Snapshot, error) {
+func (engines *Engines) ApplyEngineSelection(ctx context.Context, native *execution.Runtime, sess *session.Session, options agentrun.Options, next conversationconfig.Config, revision uint64, cfg config.Config) (conversationconfig.Snapshot, error) {
 	engines.admission.Lock()
 	defer engines.admission.Unlock()
-	if err := engines.validateEngineSwitch(ctx, native, sess, options, next.Engine()); err != nil {
+	if err := engines.validateEngineSwitch(ctx, native, sess, options, next.Engine(), cfg); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
 	return sess.SetRuntimeConfig(next, revision)
 }
 
-func (engines *Engines) validateEngineSwitch(ctx context.Context, native *execution.Runtime, sess *session.Session, options agentrun.Options, target config.RuntimeSelection) error {
+func (engines *Engines) validateEngineSwitch(ctx context.Context, native *execution.Runtime, sess *session.Session, options agentrun.Options, target config.RuntimeSelection, cfg config.Config) error {
 	if err := engines.Operations.Recover(ctx, options.ProjectID, sess); err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (engines *Engines) validateEngineSwitch(ctx context.Context, native *execut
 	if target.Kind == config.RuntimeNative {
 		return nil
 	}
-	_, release, err := engines.Acquire(ctx, target)
+	_, release, err := engines.Acquire(ctx, target, cfg)
 	if err == nil {
 		release()
 	}

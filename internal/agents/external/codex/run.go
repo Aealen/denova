@@ -59,8 +59,15 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	setup, cancelSetup := context.WithTimeout(context.WithoutCancel(ctx), infrastructureTimeout)
 	defer cancelSetup()
 	var thread threadReply
+	model := input.Selection.Codex.Model
+	if input.Selection.ModelProfileID() != "" {
+		model = c.apiModel
+	}
+	if model == "" {
+		return external.Result{}, errors.New("runtime API model was not resolved")
+	}
 	if err := c.call(setup, "thread/start", map[string]any{
-		"model": input.Selection.Codex.Model, "cwd": c.cwd, "ephemeral": true,
+		"model": model, "cwd": c.cwd, "ephemeral": true,
 		"sandbox": "read-only", "approvalPolicy": "never", "baseInstructions": input.Instructions,
 		"dynamicTools": specs,
 	}, &thread); err != nil {

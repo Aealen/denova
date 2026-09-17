@@ -46,12 +46,13 @@ type ConversationConfigBinding struct {
 // transport layer depends on this type instead of reaching through app into
 // the Agent implementation package.
 type ConversationConfigPatch struct {
-	CustomAgentID *string                      `json:"custom_agent_id,omitempty"`
-	ProfileID     *string                      `json:"profile_id,omitempty"`
-	ThinkingLevel *string                      `json:"thinking_level,omitempty"`
-	ApprovalMode  *config.AgentApprovalMode    `json:"approval_mode,omitempty"`
-	Runtime       *config.RuntimeSelection     `json:"runtime,omitempty"`
-	Codex         *config.CodexRuntimeSettings `json:"codex,omitempty"`
+	CustomAgentID *string                       `json:"custom_agent_id,omitempty"`
+	ProfileID     *string                       `json:"profile_id,omitempty"`
+	ThinkingLevel *string                       `json:"thinking_level,omitempty"`
+	ApprovalMode  *config.AgentApprovalMode     `json:"approval_mode,omitempty"`
+	Runtime       *config.RuntimeSelection      `json:"runtime,omitempty"`
+	Codex         *config.CodexRuntimeSettings  `json:"codex,omitempty"`
+	Claude        *config.ClaudeRuntimeSettings `json:"claude,omitempty"`
 }
 
 type ConversationGoalMutation struct {
@@ -240,6 +241,7 @@ func (patch *ConversationConfigPatch) UnmarshalJSON(data []byte) error {
 		ApprovalMode:  parsed.ApprovalMode,
 		Runtime:       parsed.Runtime,
 		Codex:         parsed.Codex,
+		Claude:        parsed.Claude,
 	}
 	return nil
 }
@@ -275,7 +277,7 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 }
 
 func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch ConversationConfigPatch, baseRevision uint64) (conversationconfig.Snapshot, error) {
-	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil && patch.Runtime == nil && patch.Codex == nil {
+	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil && patch.Runtime == nil && patch.Codex == nil && patch.Claude == nil {
 		return conversationconfig.Snapshot{}, errors.New("conversation config changes are empty")
 	}
 	if patch.ProfileID != nil || patch.ThinkingLevel != nil {
@@ -289,6 +291,7 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 		ApprovalMode:  patch.ApprovalMode,
 		Runtime:       patch.Runtime,
 		Codex:         patch.Codex,
+		Claude:        patch.Claude,
 	}
 	var snapshot conversationconfig.Snapshot
 	var err error
@@ -376,7 +379,7 @@ func (a *App) patchWritingConversationConfig(ctx context.Context, binding Conver
 			return conversationconfig.Snapshot{}, ErrAgentOperationActive
 		}
 		options := agentrun.Options{AgentKind: config.AgentKindIDE, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStoreDir, Workspace: runtimeCfg.Workspace, SessionID: sessionID, Mode: "ide"}
-		return a.AgentEngines().ApplyEngineSelection(ctx, native, sess, options, next, baseRevision)
+		return a.AgentEngines().ApplyEngineSelection(ctx, native, sess, options, next, baseRevision, runtimeCfg)
 	}
 	return sess.SetRuntimeConfig(next, baseRevision)
 }

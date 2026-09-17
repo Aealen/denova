@@ -123,7 +123,7 @@ func (record Record) Validate() error {
 		if err := json.Unmarshal(record.Data, &data); err != nil {
 			return err
 		}
-		if data.CommandID == "" || data.Fingerprint == "" || data.InputMessageID == "" || data.Runtime.Kind != config.RuntimeCodex {
+		if data.CommandID == "" || data.Fingerprint == "" || data.InputMessageID == "" || (data.Runtime.Kind != config.RuntimeCodex && data.Runtime.Kind != config.RuntimeClaude) {
 			return errors.New("external acceptance requires command, fingerprint, input and external runtime")
 		}
 		return data.Runtime.Validate(config.AgentKindGeneral)

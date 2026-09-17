@@ -22,6 +22,10 @@ func cloneSelection(selection config.RuntimeSelection) config.RuntimeSelection {
 		value := *selection.Codex
 		selection.Codex = &value
 	}
+	if selection.Claude != nil {
+		value := *selection.Claude
+		selection.Claude = &value
+	}
 	return selection
 }
 
