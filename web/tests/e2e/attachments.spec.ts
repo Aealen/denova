@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '../support/fixtures'
 import { createAndOpenBook, createStartedStory } from '../support/api'
-import { openWritingAgent } from '../support/agent-chat'
+import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { createRequire } from 'node:module'
 
 test('uploads, previews, sends, and restores image attachments in Writing and Game', async ({ page, request }) => {
@@ -27,29 +27,25 @@ test('uploads, previews, sends, and restores image attachments in Writing and Ga
     let composer = await openWritingAgent(page)
     await attachImage(page, 'right', 'writing-e2e.png', image)
     await expect(page.getByTestId('right').getByRole('button', { name: '预览 writing-e2e.png' })).toBeVisible()
-    await composer.fill('Inspect this image. E2E_WRITING_IMAGE_ATTACHMENT')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Inspect this image. E2E_WRITING_IMAGE_ATTACHMENT')
     await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toBeVisible()
     await expect(page.getByTestId('right').getByTestId('sent-message-attachments')).toHaveCount(1)
     await previewImage(page, 'right', 'writing-e2e.png')
 
     await attachImage(page, 'right', 'writing-second.png', secondImage)
-    await composer.fill('Compare both images. E2E_WRITING_IMAGE_ATTACHMENT E2E_TWO_IMAGES')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Compare both images. E2E_WRITING_IMAGE_ATTACHMENT E2E_TWO_IMAGES')
     await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(2)
 
     composer = await openGame(page)
     await attachImage(page, 'story-stage', 'game-e2e.png', image)
     await expect(page.getByTestId('story-stage').getByRole('button', { name: '预览 game-e2e.png' })).toBeVisible()
-    await composer.fill('Follow the image signal. E2E_GAME_IMAGE_ATTACHMENT')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Follow the image signal. E2E_GAME_IMAGE_ATTACHMENT')
     await expect(page.getByText('图像中的蓝色信标亮起，旧车站的侧门随之打开。', { exact: true })).toBeVisible()
     await expect(page.getByTestId('story-stage').getByTestId('sent-message-attachments')).toHaveCount(1)
     await previewImage(page, 'story-stage', 'game-e2e.png')
 
     await attachImage(page, 'story-stage', 'game-second.png', secondImage)
-    await composer.fill('Compare both signals. E2E_GAME_IMAGE_ATTACHMENT E2E_TWO_IMAGES')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Compare both signals. E2E_GAME_IMAGE_ATTACHMENT E2E_TWO_IMAGES')
     await expect(page.getByText('图像中的蓝色信标亮起，旧车站的侧门随之打开。', { exact: true })).toHaveCount(2)
 
     await page.reload()
@@ -57,16 +53,14 @@ test('uploads, previews, sends, and restores image attachments in Writing and Ga
     await expect(page.getByTestId('story-stage').getByTestId('sent-message-attachments')).toHaveCount(2)
     await previewImage(page, 'story-stage', 'game-e2e.png')
 
-    await composer.fill('Continue using the original image. E2E_GAME_IMAGE_ATTACHMENT')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Continue using the original image. E2E_GAME_IMAGE_ATTACHMENT')
     await expect(page.getByText('图像中的蓝色信标亮起，旧车站的侧门随之打开。', { exact: true })).toHaveCount(3)
 
     composer = await openWritingAgent(page)
     await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(2)
     await expect(page.getByTestId('right').getByTestId('sent-message-attachments')).toHaveCount(2)
     await previewImage(page, 'right', 'writing-e2e.png')
-    await composer.fill('Continue using the original image. E2E_WRITING_IMAGE_ATTACHMENT')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Continue using the original image. E2E_WRITING_IMAGE_ATTACHMENT')
     await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toHaveCount(3)
   } finally {
     const restored = await request.patch('/api/settings', { data: { layer: 'user', changes: { model_profiles: original.user.model_profiles } } })
@@ -110,8 +104,7 @@ test('shows a localized transport error in Writing and Game after reload', async
       await page.reload()
     }
     const composer = surface === 'writing' ? await openWritingAgent(page) : await openGame(page)
-    await composer.fill('E2E_IMAGE_TRANSPORT_LIMIT')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'E2E_IMAGE_TRANSPORT_LIMIT')
     await expect(page.getByText(error, { exact: false }).filter({ visible: true }).first()).toBeVisible()
     await page.reload()
     if (surface === 'writing') await openWritingAgent(page)

@@ -1,6 +1,6 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createStartedStory, getStorySnapshot } from '../support/api'
-import { openWritingAgent } from '../support/agent-chat'
+import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus, releaseDelayedRequest } from '../support/model'
 
 for (const product of ['writing', 'game'] as const) {
@@ -19,8 +19,7 @@ for (const product of ['writing', 'game'] as const) {
     const composer = story ? page.getByPlaceholder(/你要做什么/) : await openWritingAgent(page)
     if (story) await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
     const original = `Preserve this original input. ${marker}`
-    await composer.fill(original)
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, original)
     try {
       await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[marker] ?? 0).toBe(1)
       await expect.poll(() => activeURL).not.toBe('')

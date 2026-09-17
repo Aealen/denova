@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { expect, test, type APIRequestContext, type Page } from '../support/fixtures'
 import { createAndOpenBook, createStartedStory } from '../support/api'
-import { openWritingAgent } from '../support/agent-chat'
+import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { modelControlURL } from '../support/model'
 
 type WireRequest = { messages: { role: string; content: unknown }[]; stream?: boolean }
@@ -27,8 +27,7 @@ for (const mode of ['Writing', 'Game'] as const) {
         await surface.getByLabel('添加文件', { exact: true }).setInputFiles([0, 1].map(index => ({
           name: `reference-${turn}-${index}.png`, mimeType: 'image/png', buffer: image,
         })))
-        await composer.fill(`${marker} TURN_${turn} Inspect the references.`)
-        await composer.press('Enter')
+        await submitAgentChatMessage(page, composer, `${marker} TURN_${turn} Inspect the references.`)
         await expect(page.getByText(`${marker} ${turn} accepted.`, { exact: true })).toBeVisible({ timeout: 30_000 })
       }
       await expect(page.locator('[data-action="stop"]').filter({ visible: true })).toHaveCount(0)
@@ -44,8 +43,7 @@ for (const mode of ['Writing', 'Game'] as const) {
 
       await page.reload()
       composer = await openComposer(page, mode)
-      await composer.fill(`${marker} Continue from the retained references.`)
-      await composer.press('Enter')
+      await submitAgentChatMessage(page, composer, `${marker} Continue from the retained references.`)
       await expect(page.getByText(`${marker} continue accepted.`, { exact: true })).toBeVisible({ timeout: 30_000 })
       await expect(page.locator('[data-action="stop"]').filter({ visible: true })).toHaveCount(0)
       const reopened = (await captured(request, marker)).at(-1)!

@@ -1,6 +1,6 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createStartedStory } from '../support/api'
-import { openWritingAgent } from '../support/agent-chat'
+import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { createRequire } from 'node:module'
 import { unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -27,8 +27,7 @@ test('reads local images through tools and restores captured pixels in Writing a
     }
     let composer = await open()
     const reply = surface === 'writing' ? 'Tool image reached the model.' : '工具读取的图片已呈现，旧车站地图上的路线清晰可见。'
-    await composer.fill('Read e2e-tool-image.png and describe it. E2E_TOOL_IMAGE_READ')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Read e2e-tool-image.png and describe it. E2E_TOOL_IMAGE_READ')
     await expect(page.getByText(reply, { exact: true })).toHaveCount(1)
     await expect(page.locator('[data-action="stop"]').filter({ visible: true })).toHaveCount(0)
 
@@ -36,8 +35,7 @@ test('reads local images through tools and restores captured pixels in Writing a
     await unlink(source)
     await page.reload()
     composer = await open()
-    await composer.fill('Continue using the previously read image. E2E_TOOL_IMAGE_READ')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Continue using the previously read image. E2E_TOOL_IMAGE_READ')
     await expect(page.getByText(reply, { exact: true })).toHaveCount(2)
     await expect(page.locator('[data-action="stop"]').filter({ visible: true })).toHaveCount(0)
     await page.screenshot({ path: testInfo.outputPath(`${surface}-tool-image.png`) })
