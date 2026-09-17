@@ -20,15 +20,12 @@ web/test-results/
 internal/webfs/dist/
 plan.md
 docs/*
-!docs/ci-reliability-audit.md
 !docs/tests/
 docs/tests/*
 !docs/tests/large-change-regression-checklist.md
 !docs/continual-learning-user-state-design.md
 !docs/dynamic-tool-orchestration-design.md
-!docs/agent-package-api-design.md
 !docs/automation-project-agent.md
-!docs/agent-package-migration-parity-audit.md
 !docs/agent-prompt-architecture-audit.md
 !docs/agent-prompt-context-architecture-benchmark.md
 !docs/portable-denova-data-directory-design.md
