@@ -72,9 +72,12 @@ test('lets the Game Agent maintain a branch plan and keeps planning user-control
   await expect(page.getByText('你在站台地图上发现一条通往钟楼的维护通道。', { exact: true })).toBeVisible()
   await expect.poll(async () => (await getStorySnapshot(request, story.id)).branch_plan?.markdown).toContain('保留玩家离开车站的自由')
 
-  await page.getByRole('button', { name: /当前分支规划/ }).click()
-  await expect(page.getByRole('heading', { name: '当前意图', exact: true })).toBeVisible()
-  await expect(page.getByText(/保留玩家离开车站的自由/)).toBeVisible()
+  const branchPlan = page.locator('[data-slot="collapsible"]').filter({
+    has: page.getByRole('button', { name: /当前分支规划/ }),
+  })
+  await branchPlan.getByRole('button', { name: /当前分支规划/ }).click()
+  await expect(branchPlan.getByRole('heading', { name: '当前意图', exact: true })).toBeVisible()
+  await expect(branchPlan.getByText(/保留玩家离开车站的自由/)).toBeVisible()
 
   await page.getByRole('tab', { name: '控制', exact: true }).click()
   const planningSwitch = page.getByRole('switch', { name: '游戏规划' })
@@ -89,8 +92,8 @@ test('lets the Game Agent maintain a branch plan and keeps planning user-control
   await page.getByRole('tab', { name: '控制', exact: true }).click()
   await expect(page.getByRole('switch', { name: '游戏规划' })).not.toBeChecked()
   await page.getByRole('tab', { name: '总览', exact: true }).click()
-  await page.getByRole('button', { name: /当前分支规划/ }).click()
-  await expect(page.getByText(/保留玩家离开车站的自由/)).toBeVisible()
+  await branchPlan.getByRole('button', { name: /当前分支规划/ }).click()
+  await expect(branchPlan.getByText(/保留玩家离开车站的自由/)).toBeVisible()
 })
 
 test('preserves the settled turn after a failed regeneration and replaces it on retry', async ({ page, request }) => {
