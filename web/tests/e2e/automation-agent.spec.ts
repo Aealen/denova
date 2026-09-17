@@ -80,6 +80,9 @@ for (const projectType of ['book', 'general'] as const) {
       await page.screenshot({ path: test.info().outputPath(`automation-${theme}-narrow.png`) })
       await page.setViewportSize({ width: 1280, height: 960 })
       await page.getByRole('button', { name: '打开会话', exact: true }).click()
+      // Opening from another destination rehydrates the conversation before
+      // its runtime controls render, especially after the full browser suite.
+      await expect(page.getByPlaceholder(/输入消息/).filter({ visible: true })).toBeVisible({ timeout: 30_000 })
       await expect(page.getByRole('button', { name: '继续任务', exact: true })).toBeVisible()
 
       const replay = await request.post(startURL, { data: command })
