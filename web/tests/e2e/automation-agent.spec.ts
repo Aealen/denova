@@ -40,12 +40,23 @@ for (const projectType of ['book', 'general'] as const) {
     }
     try {
       await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[marker] ?? 0).toBe(1)
+      const attached = page.waitForResponse(response =>
+        new URL(response.url()).pathname === `/api/projects/${projectId}/agent-chat/chat/stream`
+        && response.status() === 200,
+      )
       await page.goto('/')
       await openAgentChatWorkbench(page)
       await openAgentChatSession(page, projectId, title)
+      await attached
+      // Stop aborts during recovery. Exercise pause only after the existing
+      // display stream has attached and the composer leaves recovery mode.
+      await expect(page.getByText('正在从持久化状态恢复已接受的 Agent 运行…', { exact: true })).toHaveCount(0)
       const running = await readActive()
       expect(running.active_operation_id).toBeTruthy()
+      const pauseCommand = page.waitForRequest(request => request.method() === 'POST'
+        && new URL(request.url()).pathname === `/api/projects/${projectId}/agent-chat/chat/commands`)
       await page.locator('[data-action="stop"]').filter({ visible: true }).click()
+      expect((await pauseCommand).postDataJSON()).toMatchObject({ type: 'suspend' })
       await expect(page.getByRole('button', { name: '继续任务', exact: true })).toBeVisible()
       await expect.poll(async () => (await readActive()).phase).toBe('suspended')
       await releaseDelayedRequest(request, marker)
@@ -81,6 +92,18 @@ for (const projectType of ['book', 'general'] as const) {
       await page.locator('[data-action="stop"]').filter({ visible: true }).click()
       await expect.poll(async () => (await readRecord()).status).toBe('suspended')
       await releaseDelayedRequest(request, marker)
+      // A recovered display task can settle before its GET reaches the server.
+      // Hold this attachment until settlement to exercise canonical rehydration
+      // deterministically, including on faster developer machines.
+      await page.route(`**/api/projects/${projectId}/agent-chat/chat/stream?**`, async (route) => {
+        await expect.poll(async () => (await readRecord()).status).toBe('success')
+        await expect.poll(async () => (await readActive()).task_id).toBeUndefined()
+        await route.continue()
+      }, { times: 1 })
+      const staleStream = page.waitForResponse(response =>
+        new URL(response.url()).pathname === `/api/projects/${projectId}/agent-chat/chat/stream`
+        && response.status() === 409,
+      )
       await page.getByRole('button', { name: '继续任务', exact: true }).click()
       await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[marker] ?? 0).toBe(1)
       expect((await readActive()).active_operation_id).toBe(running.active_operation_id)
@@ -95,6 +118,7 @@ for (const projectType of ['book', 'general'] as const) {
       expect(waitingRun.delivery_status).toBe('pending')
       expect((await readActive()).active_operation_id).toBe(running.active_operation_id)
       await releaseDelayedRequest(request, marker)
+      expect(await (await staleStream).json()).toMatchObject({ code: 'agent_runtime.rehydrate_required' })
       await expect(page.getByText('Recovered response completed exactly once.', { exact: true })).toHaveCount(1)
       await expect.poll(async () => (await readRecord()).status).toBe('success')
       const settledReplay = await request.post(startURL, { data: command })
