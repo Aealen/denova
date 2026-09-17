@@ -557,12 +557,13 @@ func (session *Session) closeForTree(releaseTreeID string) error {
 	pending := append([]*Run(nil), session.pending...)
 	session.mu.Unlock()
 	if active != nil {
-		if active.isSuspended() {
-			active.finish(Result{Status: ResultAborted, Reason: "Agent Session closed"}, nil)
-		} else {
+		if !active.isSuspended() {
 			active.abort("Agent Session closed")
 			<-active.executionDone
 		}
+		// The admission fence may suspend execution while Close is waiting.
+		// Settle that handle too; finish leaves an already settled result intact.
+		active.finish(Result{Status: ResultAborted, Reason: "Agent Session closed"}, nil)
 	}
 	for _, run := range pending {
 		run.finish(Result{Status: ResultAborted, Reason: "Agent Session closed"}, nil)
