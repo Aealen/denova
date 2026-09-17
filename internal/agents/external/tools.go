@@ -14,6 +14,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolruntime"
+	"denova/internal/i18n"
 	agent "github.com/alfredxw/denova/agent"
 	publicresult "github.com/alfredxw/denova/agent/toolresult"
 )
@@ -158,7 +159,13 @@ func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool prep
 	operation.send(agentrun.Event{Type: "tool_call", Data: map[string]any{"id": executionID, "name": call.Name, "args": string(call.Arguments), "run_id": operation.id, "tool_presentation": tool.definition.Descriptor.Presentation}})
 	ctx = agent.ContextWithToolArtifactBackend(ctx, operation.request.Session.ToolArtifactStore())
 	identity := toolruntime.HostToolIdentity{OperationID: operation.id, ExecutionID: executionID, ProviderCallID: call.ID, SessionID: operation.request.Session.ID, ReviewThreadID: operation.request.ReviewThreadID}
-	result, callErr := toolruntime.InvokeHostTool(ctx, operation.request.ToolPolicy, identity, tool.definition, string(call.Arguments))
+	var result agent.ToolResult
+	var callErr error
+	if reason := operation.hostPermissionError(call, tool); reason != "" {
+		result = agent.ToolErrorResult(reason, i18n.New(operation.request.Locale).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
+	} else {
+		result, callErr = toolruntime.InvokeHostTool(ctx, operation.request.ToolPolicy, identity, tool.definition, string(call.Arguments))
+	}
 	if callErr != nil {
 		if tool.definition.Descriptor.MutationScope != agent.ToolMutationNone && len(result.Details) == 0 && len(result.Effects) == 0 {
 			// No receipt can establish whether this call changed the domain. Keep

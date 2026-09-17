@@ -29,6 +29,7 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
   const ready = engine?.status === 'ready'
   const settings = selected === 'native' ? undefined : resolved[selected]
   const ownSettings = selected === 'native' ? undefined : value[selected]
+  const executionSettings = selected === 'codex' && resolved.codex?.sandbox ? { sandbox: resolved.codex.sandbox } : {}
   const selectedProfile = profiles.find(item => item.id === runtimeModelKey(settings))
   const model = models.items.find((item) => item.id === settings?.model)
 
@@ -89,7 +90,7 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
         <Field label={t('agentRuntime.model')} inherited={ownSettings == null}
           onReset={ownSettings ? () => { const next = { ...value }; delete next[selected]; onChange(next) } : undefined}>
           <Select value={runtimeModelKey(settings)} disabled={busy || (!ready && !profiles.length)}
-            onValueChange={(key) => onChange({ ...value, [selected]: runtimeModelFromKey(key) })}>
+            onValueChange={(key) => onChange({ ...value, [selected]: { ...executionSettings, ...runtimeModelFromKey(key) } })}>
             <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t('agentRuntime.model')}><SelectValue placeholder={t('agentRuntime.chooseModel')} /></SelectTrigger>
             <SelectContent position="popper" align="start" className="w-(--radix-select-trigger-width) max-w-[calc(100vw-2rem)]"><SelectGroup>
               <SelectLabel>{t('agentRuntime.cliModels')}</SelectLabel>
@@ -103,7 +104,7 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
           </Select>
         </Field>
         {model && model.efforts.length > 0 && <Field label={t('agentRuntime.effort')}>
-          <Select value={settings?.effort ?? 'default'} disabled={busy} onValueChange={(effort) => onChange({ ...value, [selected]: { model: model.id, ...(effort === 'default' ? {} : { effort }) } })}>
+          <Select value={settings?.effort ?? 'default'} disabled={busy} onValueChange={(effort) => onChange({ ...value, [selected]: { ...executionSettings, model: model.id, ...(effort === 'default' ? {} : { effort }) } })}>
             <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t('agentRuntime.effort')}><SelectValue /></SelectTrigger>
             <SelectContent><SelectGroup><SelectItem value="default">{t('agentRuntime.defaultEffort')}</SelectItem>
               {model.efforts.map((effort) => <SelectItem key={effort} value={effort}>{effort}</SelectItem>)}

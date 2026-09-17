@@ -90,6 +90,7 @@ var catalogZH = map[string]string{
 	"agentRuntime.notInstalled":          "未找到 Codex 可执行程序，请安装后重新检查。",
 	"agentRuntime.incompatibleVersion":   "Codex CLI 版本过旧或无法识别，请使用 0.130.0 或更新版本。",
 	"agentRuntime.operationFailed":       "Agent 引擎执行失败，已确认的内容和工具结果已保留。",
+	"agentRuntime.toolPermissionDenied":  "当前执行权限阻止了工具 {{tool}}。可在停止运行后通过会话权限菜单调整。",
 	"agentRuntime.interrupted":           "Agent 操作已中断，请处理待答问题或待核验结果后继续。",
 
 	"api.access.invalidCredentials": "用户名或密码错误。",
@@ -265,6 +266,7 @@ var catalogEN = map[string]string{
 	"agentRuntime.notInstalled":          "The Codex executable was not found. Install it and check again.",
 	"agentRuntime.incompatibleVersion":   "The Codex CLI version is too old or unrecognized. Use version 0.130.0 or newer.",
 	"agentRuntime.operationFailed":       "The Agent runtime failed. Confirmed content and tool results have been preserved.",
+	"agentRuntime.toolPermissionDenied":  "Tool {{tool}} was blocked by the current execution permissions. Stop the run to adjust permissions in the conversation menu.",
 	"agentRuntime.interrupted":           "The Agent operation was interrupted. Resolve pending questions or unverified results before continuing.",
 
 	"api.access.invalidCredentials": "Incorrect username or password.",

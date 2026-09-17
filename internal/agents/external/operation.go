@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ type Operation struct {
 	runContext      context.Context
 	mutations       []agenttool.Mutation
 	usage           *agent.TokenUsage
+	output          strings.Builder
 }
 
 func (operation *Operation) Receipt() agentrun.CommandReceipt { return operation.receipt }
@@ -87,6 +89,11 @@ func (operation *Operation) Wait(ctx context.Context) agentrun.Outcome {
 		}()
 		operation.mu.Lock()
 		operation.closed = true
+		// Adapters may return no Result on cancellation, disconnect or panic.
+		// Preserve the public text already delivered to the user in every case.
+		if (runErr != nil || ctx.Err() != nil) && operation.output.Len() > 0 {
+			result.Text = operation.output.String()
+		}
 		operation.mu.Unlock()
 		cancel()
 		operation.workers.Wait()
@@ -132,6 +139,9 @@ func (operation *Operation) Emit(event agentrun.Event) error {
 	// The adapter's terminal notifications never acknowledge a product commit.
 	if event.Type != "chunk" && event.Type != "thinking" {
 		return fmt.Errorf("unsupported external adapter event %q", event.Type)
+	}
+	if event.Type == "chunk" {
+		operation.output.WriteString(event.DataString("content"))
 	}
 	operation.send(event)
 	return nil
@@ -206,7 +216,7 @@ func (operation *Operation) close(ctx context.Context, target externaljournal.St
 		}
 		messageID := ""
 		transaction := session.ExternalTransaction{}
-		if status == externaljournal.Completed {
+		if status == externaljournal.Completed || result.Text != "" {
 			messageID = operation.id + "-output"
 			transaction.Message = &agent.Message{Role: agent.Assistant, Content: result.Text}
 			transaction.Metadata = session.MessageMetadata{MessageID: messageID, RunID: operation.id,

@@ -10,6 +10,7 @@ const settingsMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/features/agent-runtime/api', () => ({ fetchEngineModels: settingsMocks.fetchEngineModels }))
+vi.mock('@/features/agent-runtime/api-profiles', () => ({ useRuntimeProfiles: () => ({ profiles: [], loaded: true, failed: false }) }))
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: settingsMocks.fetchSettings,
@@ -45,20 +46,20 @@ describe('ModelProfileSwitcher', () => {
       const patch = vi.fn().mockResolvedValue(true)
       const controller: ConversationConfigController = {
         snapshot: { agent_kind: agentKey, profile_id: 'removed', thinking_level: 'medium', approval_mode: 'write', revision: 0,
-          runtime: { kind: 'codex', codex: { model: 'external-model', effort: 'medium' } } },
+          runtime: { kind: 'codex', codex: { model: 'external-model', effort: 'medium', sandbox: 'read-only' } } },
         initialized: true, loading: false, saving: false, error: null, patch, reload: vi.fn(),
       }
       const user = userEvent.setup()
       render(<ModelProfileSwitcher agentKey={agentKey} conversationConfig={controller} />)
       await user.click(screen.getByRole('button', { name: /切换模型/ }))
       await user.click(await screen.findByRole('button', { name: '高' }))
-      expect(patch).toHaveBeenLastCalledWith({ codex: { model: 'external-model', effort: 'high' } })
+      expect(patch).toHaveBeenLastCalledWith({ codex: { model: 'external-model', effort: 'high', sandbox: 'read-only' } })
       await user.click(screen.getByRole('button', { name: /切换模型/ }))
       await user.click(await screen.findByRole('button', { name: '默认' }))
-      expect(patch).toHaveBeenLastCalledWith({ codex: { model: 'external-model' } })
+      expect(patch).toHaveBeenLastCalledWith({ codex: { model: 'external-model', sandbox: 'read-only' } })
       await user.click(screen.getByRole('button', { name: /切换模型/ }))
       await user.click(await screen.findByRole('menuitem', { name: 'Second model' }))
-      expect(patch).toHaveBeenLastCalledWith({ codex: { model: 'second-model' } })
+      expect(patch).toHaveBeenLastCalledWith({ codex: { model: 'second-model', sandbox: 'read-only' } })
     })
   }
 

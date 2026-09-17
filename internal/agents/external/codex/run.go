@@ -68,8 +68,10 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	}
 	if err := c.call(setup, "thread/start", map[string]any{
 		"model": model, "cwd": c.cwd, "ephemeral": true,
-		"sandbox": "read-only", "approvalPolicy": "never", "baseInstructions": input.Instructions,
-		"dynamicTools": specs,
+		"sandbox": input.Selection.Codex.EffectiveSandbox(), "approvalPolicy": "never", "baseInstructions": input.Instructions,
+		// Host tools own project access and receipts; the engine cwd is scratch space.
+		"developerInstructions": "Use the provided host tools for all project reads and changes. The process working directory is temporary scratch space, not the project. Host tools enforce the selected permissions and report actual access failures; do not infer that a host tool is read-only from the process sandbox. Do not use built-in file or shell tools to bypass the host tools.",
+		"dynamicTools":          specs,
 	}, &thread); err != nil {
 		return external.Result{}, err
 	}

@@ -142,6 +142,9 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			if scenario == "api" {
 				input.Selection.Codex = &config.CodexRuntimeSettings{ProfileID: "api-profile"}
 			}
+			if scenario == "patch" {
+				input.Selection.Codex.Sandbox = config.CodexReadOnly
+			}
 			if scenario == "images" {
 				var picture bytes.Buffer
 				if err := png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 16, 16))); err != nil {

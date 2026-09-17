@@ -18,13 +18,31 @@ const (
 
 var ErrInvalidAgentRuntime = errors.New("invalid Agent runtime configuration")
 
-// CodexRuntimeSettings is one complete model selection. Model-specific effort
+// CodexRuntimeSettings is one complete model and execution selection. Model-specific effort
 // availability is checked by the internal runtime model catalog at execution.
 type CodexRuntimeSettings struct {
 	// ProfileID selects a Denova API model instead of a CLI-owned Model.
 	ProfileID string `toml:"profile_id,omitempty" json:"profile_id,omitempty"`
 	Model     string `toml:"model,omitempty" json:"model,omitempty"`
 	Effort    string `toml:"effort,omitempty" json:"effort,omitempty"`
+	// Sandbox belongs to the conversation and also constrains host tools.
+	// Omission allows workspace writes; host paths never enter this setting.
+	Sandbox CodexSandbox `toml:"sandbox,omitempty" json:"sandbox,omitempty"`
+}
+
+type CodexSandbox string
+
+const (
+	CodexReadOnly       CodexSandbox = "read-only"
+	CodexWorkspaceWrite CodexSandbox = "workspace-write"
+	CodexFullAccess     CodexSandbox = "danger-full-access"
+)
+
+func (settings CodexRuntimeSettings) EffectiveSandbox() CodexSandbox {
+	if settings.Sandbox == "" {
+		return CodexWorkspaceWrite
+	}
+	return settings.Sandbox
 }
 
 // ClaudeRuntimeSettings stores CLI model aliases and its own effort vocabulary.
@@ -80,6 +98,11 @@ func (preferences RuntimePreferences) Validate() error {
 }
 
 func (settings CodexRuntimeSettings) validate() error {
+	switch settings.EffectiveSandbox() {
+	case CodexReadOnly, CodexWorkspaceWrite, CodexFullAccess:
+	default:
+		return fmt.Errorf("%w: unknown execution sandbox %q", ErrInvalidAgentRuntime, settings.Sandbox)
+	}
 	return validateRuntimeModel(settings.Model, settings.ProfileID, settings.Effort)
 }
 

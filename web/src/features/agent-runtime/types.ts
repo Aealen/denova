@@ -1,7 +1,8 @@
 export type AgentEngineID = 'native' | 'codex' | 'claude'
 /** API profiles and CLI models are exclusive sources; secrets remain in endpoints. */
 export type RuntimeModelSettings = { model: string; effort?: string; profile_id?: never } | { profile_id: string; model?: never; effort?: never }
-export type CodexRuntimeSettings = RuntimeModelSettings
+export type CodexSandbox = 'read-only' | 'workspace-write' | 'danger-full-access'
+export type CodexRuntimeSettings = RuntimeModelSettings & { sandbox?: CodexSandbox }
 export type ClaudeRuntimeSettings = RuntimeModelSettings
 export interface RuntimePreferences { selected?: AgentEngineID; codex?: CodexRuntimeSettings; claude?: ClaudeRuntimeSettings }
 export type RuntimeSelection = { kind: 'native' } | { kind: 'codex'; codex: CodexRuntimeSettings } | { kind: 'claude'; claude: ClaudeRuntimeSettings }

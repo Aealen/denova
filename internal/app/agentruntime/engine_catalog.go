@@ -124,7 +124,7 @@ func EngineConfigurationSections(selected config.RuntimeID) []ConfigurationSecti
 	for _, engine := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude} {
 		for _, suffix := range []string{"model", "execution_policy"} {
 			section := ConfigurationSection{ID: ConfigurationSectionID(string(engine) + "." + suffix), Owner: string(engine), State: "editable"}
-			if suffix == "execution_policy" {
+			if suffix == "execution_policy" && engine != config.RuntimeCodex {
 				section.State, section.ReasonKey = "read_only", "agentRuntime.configuration.managedPolicy"
 			}
 			if selected != engine {

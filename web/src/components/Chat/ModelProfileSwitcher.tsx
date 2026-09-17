@@ -187,9 +187,9 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     setSavingSelection(selection)
     try {
       const saved = await conversationConfig.patch(engineSettings
-        ? { [engineKind]: selection.kind === 'profile'
+        ? { [engineKind]: { ...(runtime?.kind === 'codex' && runtime.codex.sandbox ? { sandbox: runtime.codex.sandbox } : {}), ...(selection.kind === 'profile'
           ? runtimeModelFromKey(selection.value)
-          : { model: engineSettings.model, ...(selection.value === 'default' ? {} : { effort: selection.value }) } }
+          : { model: engineSettings.model, ...(selection.value === 'default' ? {} : { effort: selection.value }) }) } }
         : selection.kind === 'profile'
         ? { profile_id: selection.value }
         : { thinking_level: selection.value as ThinkingLevel })

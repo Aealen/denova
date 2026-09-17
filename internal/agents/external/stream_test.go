@@ -2,12 +2,72 @@ package external
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
 	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/session"
 	apptask "denova/internal/app/task"
 )
+
+func TestExternalStreamPreservesPartialOutputAfterStop(t *testing.T) {
+	for _, stop := range []string{"cancel", "failure", "panic"} {
+		t.Run(stop, func(t *testing.T) {
+			service, request, _ := operationFixture(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			request.Adapter = adapterFunc(func(_ context.Context, _ Input, host Host) (Result, error) {
+				for _, text := range []string{"Saved prefix. ", "Unfinished sentence"} {
+					if err := host.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{"content": text}}); err != nil {
+						return Result{}, err
+					}
+				}
+				if stop == "panic" {
+					panic("stream interrupted")
+				}
+				if stop == "cancel" {
+					cancel()
+					return Result{}, context.Canceled
+				}
+				return Result{}, errors.New("provider disconnected")
+			})
+			operation, err := service.Start(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outcome := operation.Wait(ctx)
+			if outcome.Status == agentrun.OutcomeCompleted {
+				t.Fatal("partial output marked completed")
+			}
+			// Reopen from the canonical journal, with no live Task or Session cache.
+			store, err := session.NewStore(request.AttachmentRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			reloaded, err := store.Get(request.Session.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			page, err := reloaded.ReadHistoryPage(t.Context(), -1, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			last := page.Entries[len(page.Entries)-1]
+			if last.Content != "Saved prefix. Unfinished sentence" || last.ID != operation.id+"-output" || last.RunID != operation.id {
+				t.Fatalf("partial output lost after reload: %#v", last)
+			}
+			history, err := ReadHistory(t.Context(), reloaded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if history.Messages[len(history.Messages)-1].Text != last.Content {
+				t.Fatal("continuation lost partial output")
+			}
+		})
+	}
+}
 
 func TestExternalStreamAnnouncesAcceptanceAndReplaysWhileRunning(t *testing.T) {
 	service, request, _ := operationFixture(t)

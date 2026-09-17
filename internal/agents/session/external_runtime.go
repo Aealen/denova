@@ -30,7 +30,7 @@ type ExternalState struct {
 }
 
 // ExternalTransaction contains one product message and its execution facts.
-// Acceptance uses the user message; completion uses the final assistant message.
+// Acceptance uses the user message; settlement preserves final or partial assistant text.
 // A tool transition has no canonical message. Prepare callbacks must perform no
 // tool calls, network I/O or writes outside this transaction.
 type ExternalTransaction struct {
@@ -128,7 +128,7 @@ func validateExternalMessagePair(change ExternalTransaction, record externaljour
 		if err := json.Unmarshal(record.Data, &closed); err != nil {
 			return err
 		}
-		if closed.Status == externaljournal.Completed && (change.Message == nil || change.Message.Role != agent.Assistant || closed.MessageID != change.Metadata.MessageID) {
+		if (closed.Status == externaljournal.Completed || closed.MessageID != "") && (change.Message == nil || change.Message.Role != agent.Assistant || closed.MessageID != change.Metadata.MessageID) {
 			return errors.New("external completion must atomically publish its exact assistant message")
 		}
 	}

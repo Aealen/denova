@@ -49,6 +49,8 @@ for (const engine of ['codex', 'claude'] as const) {
         await openComposer()
         const trigger = page.locator('[data-model-profile-trigger]').filter({ visible: true })
         await expect(trigger).toHaveAttribute('data-current-model', 'First model')
+        const permissions = page.getByRole('button', { name: /Agent 安全模式: 工作区写入/ })
+        if (engine === 'codex') await expect(permissions).toBeVisible()
         for (const width of [1440, 390]) {
           await page.setViewportSize({ width, height: 960 })
           if (kind === 'writing' && width === 390) await page.getByRole('tab', { name: 'Agent', exact: true }).click()
@@ -56,8 +58,17 @@ for (const engine of ['codex', 'claude'] as const) {
           await expect(page.getByRole('menuitem', { name: 'First model', exact: true })).toBeVisible()
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
           await page.screenshot({ path: test.info().outputPath(`${engine}-composer-${width}.png`) })
-          await page.keyboard.press('Escape')
+          await page.getByRole('menuitem', { name: 'First model', exact: true }).click()
           await expect(page.locator('[data-slot="dropdown-menu-content"]')).toHaveCount(0)
+          if (engine === 'codex') {
+            await permissions.click()
+            await expect(page.getByRole('menuitem', { name: /^只读/ })).toBeVisible()
+            await expect(page.getByRole('menuitem', { name: /^完全访问/ })).toBeVisible()
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+            await page.screenshot({ path: test.info().outputPath(`permissions-${width}.png`) })
+            await page.getByRole('menuitem', { name: /^工作区写入/ }).click()
+            await expect(page.locator('[data-slot="dropdown-menu-content"]')).toHaveCount(0)
+          }
         }
         await trigger.click()
         await page.getByRole('button', { name: '高', exact: true }).click()
@@ -80,6 +91,18 @@ for (const engine of ['codex', 'claude'] as const) {
         await trigger.click()
         await expect(page.getByRole('button', { name: '低', exact: true })).toBeVisible()
         await expect(page.getByRole('button', { name: '高', exact: true })).toHaveCount(0)
+        await page.getByRole('menuitem', { name: /^Second model/ }).click()
+        if (engine === 'codex') {
+          await permissions.click()
+          await page.getByRole('menuitem', { name: /^只读/ }).click()
+          await expect.poll(readSelection).toEqual({ model: 'second-model', sandbox: 'read-only' })
+          await page.reload()
+          await openComposer()
+          await expect(page.getByRole('button', { name: /Agent 安全模式: 只读/ })).toBeVisible()
+          await trigger.click()
+          await page.getByRole('menuitem', { name: 'First model', exact: true }).click()
+          await expect.poll(readSelection).toEqual({ model: 'first-model', sandbox: 'read-only' })
+        }
         const saved = await (await request.get('/api/settings')).json()
         expect(saved.user.agent_runtimes[role][engine]).toEqual(model)
       })

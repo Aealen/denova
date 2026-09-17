@@ -105,8 +105,8 @@ func TestEngineConfigurationSectionsRetainOwnerAcrossSelection(t *testing.T) {
 		if section.Owner == "native" && other.State != "inactive" {
 			t.Fatal("Native settings remained active")
 		}
-		if section.ID == "codex.execution_policy" && other.State != "read_only" {
-			t.Fatal("managed policy became editable")
+		if section.ID == "codex.execution_policy" && other.State != "editable" {
+			t.Fatal("Codex execution permissions are not editable")
 		}
 	}
 }
