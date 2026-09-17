@@ -99,8 +99,12 @@ for (const projectType of ['book', 'general'] as const) {
       // Hold this attachment until settlement to exercise canonical rehydration
       // deterministically, including on faster developer machines.
       await page.route(`**/api/projects/${projectId}/agent-chat/chat/stream?**`, async (route) => {
+        const staleTaskId = new URL(route.request().url()).searchParams.get('task_id')
+        expect(staleTaskId).toBeTruthy()
         await expect.poll(async () => (await readRecord()).status).toBe('success')
-        await expect.poll(async () => (await readActive()).task_id).toBeUndefined()
+        // Pending delivery may already have started the next task. Only this
+        // attachment's task must be gone; the conversation need not be idle.
+        await expect.poll(async () => (await readActive()).task_id).not.toBe(staleTaskId)
         await route.continue()
       }, { times: 1 })
       const staleStream = page.waitForResponse(response =>
