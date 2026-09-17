@@ -305,7 +305,7 @@ Compaction: myCompactionManager
 
 `Standard` 默认保留最近的完整交互，使用当前模型快照生成摘要；容量不足时按顺序分批处理，模型失败不会偷偷切换执行方式。`Prompt` 可增加领域侧重点；`ModelSummarizer` 可指定替代模型，替代模型需声明稳定的 Identity。
 
-自定义 Manager 的 `Plan` 接收完整交互组和最终模型快照，返回需要覆盖的前缀 `GroupCount`。`Compact` 只接收旧 checkpoint 与新选材料。两级扩展都返回 `CompactionCheckpoint{Summary, ContextData}`；ContextData 为可选的类型化、版本化 JSON（最多 8 MiB），随摘要原子保存，不自动注入模型。
+自定义 Manager 的 `Plan` 接收完整交互组和最终模型快照，返回需要覆盖的前缀 `GroupCount`。`EstimateAfter(GroupCount)` 可估算替换后的完整请求（包含受保护输入、工具 Schema 和图片，尚未计入新摘要），仅在当前 `Plan` 调用内使用；规划器需另外预留摘要预算。内置策略按 token 恢复目标选取范围，分批摘要仍传递原生图片；最终请求在写入 checkpoint 前重新校验。`Compact` 只接收旧 checkpoint 与新选材料。两级扩展都返回 `CompactionCheckpoint{Summary, ContextData}`；ContextData 为可选的类型化、版本化 JSON（最多 8 MiB），随摘要原子保存，不自动注入模型。
 
 Agent 统一保护当前用户要求、最近完整工具组及未完成步骤，检查最终请求容量和实际压缩进展，并负责 journal、revision、取消和恢复。应用通过 `Session.Snapshot().Compaction` 读取摘要视图，详细数据位于 `Inspect().CompactionMetrics` 和压缩事件。运行时返回的视图可调用 `Project` 检查有效历史；序列化后的展示数据不携带历史覆盖权限。
 

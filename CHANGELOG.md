@@ -31,8 +31,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
-- 修复写作与游戏将图片编码体积误算为文本 token、导致正常参考图被拒绝的问题；图片上下文预算与实际发送大小分别校验，连续发送图片不再误触发通用 4 MB 上限，必要时仅缩小发送副本。
-- Fix Writing and Game rejecting valid reference images by counting encoded image bytes as text tokens; visual context and actual payload limits are checked separately, so consecutive images no longer hit the generic 4 MB cap; resize sending copies when needed.
+- 修复写作与游戏的图片容量计量及压缩：图片上下文预算与实际发送大小分别校验，不再误触发通用 4 MB 上限；多图会话按视觉 token 选择压缩范围，分批摘要保留原生图片输入，必要时仅缩小发送副本。
+- Fix image budgeting and compaction in Writing and Game: check visual context separately from payload size, avoid false generic 4 MB rejections, select enough history under visual-token pressure, and preserve native images in summary batches; resize only sending copies when needed.
 
 - 写作与游戏的长任务可在同一个请求内反复压缩已完成步骤，保留当前要求与最近工具结果；超大工具输出可回读完整文件，重启后继续使用摘要。修正压缩后的 token 校准，避免多余压缩与误报容量不足。
 - Writing and Game long tasks can compact completed steps repeatedly within one request while preserving current instructions and recent tool results; complete oversized output remains readable from artifacts, and checkpoints survive restart. Correct post-compaction token calibration to avoid redundant summaries and false capacity failures.
