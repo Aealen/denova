@@ -107,11 +107,17 @@ for (const projectType of ['book', 'general'] as const) {
         await expect.poll(async () => (await readActive()).task_id).not.toBe(staleTaskId)
         await route.continue()
       }, { times: 1 })
+      const staleAttachment = page.waitForRequest(request => request.method() === 'GET'
+        && new URL(request.url()).pathname === `/api/projects/${projectId}/agent-chat/chat/stream`,
+      )
       const staleStream = page.waitForResponse(response =>
         new URL(response.url()).pathname === `/api/projects/${projectId}/agent-chat/chat/stream`
         && response.status() === 409,
       )
       await page.getByRole('button', { name: '继续任务', exact: true }).click()
+      // Keep the model blocked until the browser has actually requested the
+      // stream; otherwise hydration can see an already completed operation.
+      await staleAttachment
       await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[marker] ?? 0).toBe(1)
       expect((await readActive()).active_operation_id).toBe(running.active_operation_id)
       // A second trigger must not occupy the shared AgentChat admission lock
