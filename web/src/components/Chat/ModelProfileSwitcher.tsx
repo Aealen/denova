@@ -76,8 +76,7 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
         <DropdownMenuGroup>
           <DropdownMenuItem disabled={!navigation} className="cursor-pointer text-xs text-muted-foreground"
             onSelect={() => navigation?.open({ kind: 'config_resource', resource: 'agent_profile',
-              id: conversationConfig?.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime',
-              conversation: conversationConfig?.binding })}>
+              id: conversationConfig?.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime' })}>
             {selector.t('agentRuntime.currentRuntime', { runtime: runtimeName })}
           </DropdownMenuItem>
         </DropdownMenuGroup>

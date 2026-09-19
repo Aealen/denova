@@ -16,7 +16,6 @@ import { getSkills, resourceTargetKey } from '@/lib/api'
 import type { ResourceTarget, SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
 import { AgentEngineSection } from './AgentEngineSection'
-import { ApplyAgentEngineSection } from './ApplyAgentEngineSection'
 import { resolveRuntimePreferences, type RuntimePreferences, type ConfigurationSectionID, type EngineDescriptor } from '@/features/agent-runtime/types'
 import { AgentCheckpointSection } from './AgentCheckpointSection'
 import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelSection, AgentPromptSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
@@ -131,8 +130,6 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
   const engineValue = selectedCustomAgent ? layerCustomAgent?.runtime ?? selectedCustomAgent.runtime ?? {} : (engineAgent ? draft.agent_runtimes?.[engineAgent] ?? {} : {})
   const inheritedEngine = selectedCustomAgent ? {} : (engineAgent ? inheritedSettings.agent_runtimes?.[engineAgent] ?? {} : {})
   const resolvedEngine = resolveRuntimePreferences(inheritedEngine, engineValue)
-  const applyTarget = toolNavigationIntent?.target.kind === 'config_resource' && toolNavigationIntent.target.resource === 'agent_profile'
-    && toolNavigationIntent.target.id === (selectedCustomAgent?.id ?? activeAgent) ? toolNavigationIntent.target.conversation : undefined
   const configuration = layered?.agent_configuration?.[selectedCustomAgent?.id ?? activeAgent]
   const sections = configuration && configuration.selected === resolvedEngine.selected ? configuration.sections
     : engines.find((engine) => engine.id === resolvedEngine.selected)?.configuration_sections
@@ -462,7 +459,6 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
                   <p className="text-xs text-muted-foreground">{t('agentRuntime.nativeOnly')}</p>
                 </AgentConfigurationDisclosure>
               )}
-              {engineAgent && applyTarget ? <ApplyAgentEngineSection key={`apply:${toolNavigationIntent?.nonce}:${activeLayer}:${activeSelection}`} binding={applyTarget} agentKind={engineAgent} customAgentId={selectedCustomAgent?.id} runtime={resolvedEngine} saveDefaults={saveNow} /> : null}
               {showModelConfiguration && editable('native.model') ? (
                 <AgentConfigurationDisclosure
                   key={`model:${activeSelection}:${toolNavigationIntent?.nonce ?? 0}`}
