@@ -3,7 +3,9 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +18,38 @@ import (
 	"denova/internal/agents/sessionjournal"
 )
 
+// errCanonicalProjectionMisalignment 标记派生 checkpoint 与 canonical journal
+// 错位:checkpoint 描述的 locator 在 canonical 文件中无法定位。checkpoint 只是
+// 派生物,丢弃后从 canonical 全量重建永远是安全的。
+var errCanonicalProjectionMisalignment = errors.New("canonical projection checkpoint misaligned")
+
+// loadSession 打开会话 journal;checkpoint 错位时自动丢弃 sidecar 重建一次。
 func loadSession(filePath string) (*Session, error) {
+	sess, firstErr := loadSessionOnce(filePath)
+	if firstErr == nil || !errors.Is(firstErr, errCanonicalProjectionMisalignment) {
+		return sess, firstErr
+	}
+	slog.WarnContext(context.Background(), fmt.Sprintf(
+		"[agent-session] discard misaligned session index path=%s error=%v", filePath, firstErr))
+	if err := removeSessionIndexCheckpoint(filePath); err != nil {
+		return nil, errors.Join(firstErr, err)
+	}
+	sess, retryErr := loadSessionOnce(filePath)
+	if retryErr != nil {
+		return nil, errors.Join(firstErr, retryErr)
+	}
+	return sess, nil
+}
+
+func removeSessionIndexCheckpoint(filePath string) error {
+	err := os.Remove(conversationjournal.SidecarPath(filePath))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func loadSessionOnce(filePath string) (*Session, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
 		return nil, err
@@ -79,7 +112,7 @@ func loadSession(filePath string) (*Session, error) {
 			After: projection.PendingInterruptCursor - 1, Through: projection.PendingInterruptCursor,
 		})
 		if readErr != nil {
-			return nil, fmt.Errorf("读取待恢复中断失败 %s: %w", filePath, readErr)
+			return nil, fmt.Errorf("读取待恢复中断失败 %s: %w (%w)", filePath, readErr, errCanonicalProjectionMisalignment)
 		}
 		for _, record := range pendingRecords {
 			if err := appendConversationRecord(sess, record); err != nil {
@@ -96,10 +129,10 @@ func loadSession(filePath string) (*Session, error) {
 			After: locator.Cursor - 1, Through: locator.Cursor,
 		})
 		if readErr != nil {
-			return nil, fmt.Errorf("read session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, readErr)
+			return nil, fmt.Errorf("read session canonical message transaction %s cursor %d: %w (%w)", filePath, locator.Cursor, readErr, errCanonicalProjectionMisalignment)
 		}
 		if len(messageRecords) == 0 || messageRecords[0].Location.Cursor != locator.Cursor {
-			return nil, fmt.Errorf("session canonical message transaction missing %s cursor %d", filePath, locator.Cursor)
+			return nil, fmt.Errorf("session canonical message transaction missing %s cursor %d: %w", filePath, locator.Cursor, errCanonicalProjectionMisalignment)
 		}
 		// Canonical input/context and its Agent receipt share one transaction.
 		// Restore every payload, just as the normal recent-window path does.
