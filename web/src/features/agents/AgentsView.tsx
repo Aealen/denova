@@ -126,7 +126,7 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
   const imageProfileOptions = useMemo(() => buildImageProfileOptions(draft, effective, t), [draft, effective, t])
   const baseInheritedModel = mergeAgentModelOverride(inheritedSettings.agent_models?.default ?? {}, inheritedSettings.agent_models?.[activeAgent] ?? {})
   const modelValue = selectedCustomAgent ? layerCustomAgent?.model ?? selectedCustomAgent.model ?? {} : draft.agent_models?.[activeAgent] ?? {}
-  const engineAgent = activeAgent === 'ide' || activeAgent === 'general' ? activeAgent : null
+  const engineAgent = activeAgent === 'ide' || activeAgent === 'general' || activeAgent === 'interactive_story' ? activeAgent : null
   const engineValue = selectedCustomAgent ? layerCustomAgent?.runtime ?? selectedCustomAgent.runtime ?? {} : (engineAgent ? draft.agent_runtimes?.[engineAgent] ?? {} : {})
   const inheritedEngine = selectedCustomAgent ? {} : (engineAgent ? inheritedSettings.agent_runtimes?.[engineAgent] ?? {} : {})
   const resolvedEngine = resolveRuntimePreferences(inheritedEngine, engineValue)

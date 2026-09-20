@@ -7,6 +7,7 @@ import { ToolNavigationProvider } from './tool-navigation'
 
 const settingsMocks = vi.hoisted(() => ({
   fetchSettings: vi.fn(),
+  fetchProjectSettings: vi.fn(),
   fetchEngineModels: vi.fn(),
   profiles: [] as { id: string; label: string; modelLabel: string }[],
 }))
@@ -16,6 +17,7 @@ vi.mock('@/features/agent-runtime/api-profiles', () => ({ useRuntimeProfiles: ()
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: settingsMocks.fetchSettings,
+  fetchProjectSettings: settingsMocks.fetchProjectSettings,
 }))
 
 vi.mock('@/features/settings/query', () => ({
@@ -36,6 +38,7 @@ describe('ModelProfileSwitcher', () => {
       render(<ToolNavigationProvider value={{ workspace: '', open }}><ModelProfileSwitcher agentKey={agentKey} conversationConfig={controller} /></ToolNavigationProvider>)
       await waitFor(() => expect(screen.getByRole('button', { name: /切换模型/ })).toBeEnabled())
       await userEvent.click(screen.getByRole('button', { name: /切换模型/ }))
+      expect(screen.queryByText('切换运行时')).not.toBeInTheDocument()
       await userEvent.click(screen.getByRole('menuitem', { name: '运行时：Native' }))
       expect(open).toHaveBeenCalledWith({ kind: 'config_resource', resource: 'agent_profile', id: agentKey, scope: 'user', section: 'runtime' })
     })

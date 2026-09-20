@@ -114,7 +114,6 @@ func BuildInteractiveStoryDefinitionWithCompositionForHost(
 		ProjectState:      state,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
-		DisableWriteTodos: true,
 		ExtraTools:        host.RootTools,
 		ReadAdapters:      host.ReadAdapters,
 		ExtraMiddlewares:  handlers,
@@ -320,7 +319,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 	var goalManager agent.GoalManager
 	switch spec.Kind {
-	case config.AgentKindGeneral, config.AgentKindIDE, config.AgentKindInteractiveStory:
+	case config.AgentKindGeneral, config.AgentKindIDE:
 		goalManager = agentlifecycle.NewGoalManager()
 	}
 	rootTools, err := agent.StaticToolsIdentified(denovaCapabilityIdentity("denova.tools", struct {
